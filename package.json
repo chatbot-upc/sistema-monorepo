@@ -5,7 +5,10 @@
   "scripts": {
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
-    "lint:web": "pnpm --filter web lint"
+    "lint:web": "pnpm --filter web lint",
+    "dev:api": "cd apps/api && uv run uvicorn chatbot_api.main:app --reload --port 8000",
+    "test:api": "cd apps/api && uv run pytest",
+    "lint:api": "cd apps/api && uv run ruff check . && uv run mypy"
   },
   "packageManager": "pnpm@10.32.1"
 }

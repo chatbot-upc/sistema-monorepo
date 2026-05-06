@@ -33,6 +33,7 @@ node_modules/
 .turbo/
 .pnpm-store/
 *.tsbuildinfo
+next-env.d.ts
 
 # Logs
 *.log
