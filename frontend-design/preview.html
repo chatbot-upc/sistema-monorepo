@@ -1,0 +1,2675 @@
+<!doctype html>
+<html lang="es-PE">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Chatbot UPC · Design System v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOKENS — Warm cream BG · UPC red primary · multicolor accents
+   ============================================================ */
+:root {
+  /* Backgrounds */
+  --bg: #f5f3ef;            /* cream warm */
+  --bg-2: #ece9e3;          /* edge of viewport */
+  --surface: #ffffff;
+  --surface-2: #faf8f4;     /* hover sutil */
+
+  /* Text */
+  --fg: #1c1917;            /* warm black */
+  --fg-2: #44403c;
+  --muted: #78716c;         /* Stone 500 */
+  --muted-2: #a8a29e;       /* Stone 400 */
+
+  /* Lines (casi invisibles) */
+  --line: #ebe8e1;
+  --line-2: #d6d3cc;
+
+  /* PRIMARY — UPC red */
+  --primary: #d50000;
+  --primary-hover: #b80000;
+  --primary-soft: #ffeaea;
+  --primary-fg: #ffffff;
+
+  /* ACCENTS — multicolor warm palette */
+  --accent-coral: #ff7a6e;
+  --accent-coral-soft: #ffe7e3;
+
+  --accent-amber: #f5a623;
+  --accent-amber-soft: #fef0d4;
+
+  --accent-mint: #4ade80;
+  --accent-mint-soft: #dcfce7;
+
+  --accent-blue: #3b82f6;
+  --accent-blue-soft: #dbeafe;
+
+  --accent-violet: #8b5cf6;
+  --accent-violet-soft: #ede9fe;
+
+  /* Semantic */
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --signal: var(--primary);
+  --signal-soft: var(--primary-soft);
+
+  /* Black accent (botón circular tipo "+") */
+  --ink: #1c1917;
+  --ink-soft: #292524;
+
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Radius — rounded-first */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-2xl: 32px;
+  --r-full: 999px;
+
+  /* Shadows (muy sutiles) */
+  --sh-card: 0 1px 2px rgba(28,25,23,0.03), 0 1px 3px rgba(28,25,23,0.04);
+  --sh-overlay: 0 4px 12px rgba(28,25,23,0.06), 0 12px 32px rgba(28,25,23,0.08);
+}
+
+/* ============================================================
+   RESET + BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; }
+body {
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: 'cv11';
+}
+button { background: none; border: none; cursor: pointer; font: inherit; color: inherit; }
+input, textarea, select { font: inherit; color: inherit; outline: none; }
+a { color: inherit; text-decoration: none; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: inherit; }
+::selection { background: var(--primary); color: var(--primary-fg); }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   PAGE
+   ============================================================ */
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.intro {
+  margin-bottom: 32px;
+}
+.intro h1 {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.1;
+}
+.intro h1 em { font-style: normal; color: var(--primary); }
+.intro .sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 8px;
+  max-width: 600px;
+}
+.intro .meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+  margin-top: 12px;
+}
+
+.section {
+  margin-bottom: 80px;
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.section-head .num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+.section-head h2 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.section-head .desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.subsection-head {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin: 24px 0 12px;
+}
+
+/* ============================================================
+   APP SHELL — el showcase principal
+   ============================================================ */
+.shell {
+  background: var(--bg);
+  border-radius: var(--r-2xl);
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  min-height: 920px;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sb-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 24px;
+}
+.sb-brand .logo {
+  width: 28px; height: 28px;
+  background: var(--primary);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  position: relative;
+}
+.sb-brand .logo::after {
+  content: '';
+  position: absolute;
+  width: 12px; height: 2px; background: #fff;
+  border-radius: 2px;
+}
+.sb-brand .logo::before {
+  content: '';
+  position: absolute;
+  width: 2px; height: 12px; background: #fff;
+  border-radius: 2px;
+}
+.sb-brand .name {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+}
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 180ms;
+}
+.sb-item:hover { background: var(--surface-2); color: var(--fg-2); }
+.sb-item.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+.sb-item .ico { width: 18px; height: 18px; stroke-width: 2; flex-shrink: 0; }
+.sb-item .badge {
+  margin-left: auto;
+  background: var(--primary);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-weight: 500;
+}
+
+.sb-spacer { flex: 1; }
+
+.sb-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+}
+.avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-coral), var(--primary));
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.avatar.sm { width: 28px; height: 28px; font-size: 11px; }
+.avatar.user-photo {
+  background: linear-gradient(135deg, #fde68a, #fbbf24);
+}
+.sb-user .who .name { font-size: 13px; font-weight: 600; }
+.sb-user .who .id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sb-card {
+  margin-top: 16px;
+  background: linear-gradient(160deg, #f0fdf4 0%, #dcfce7 50%, #fef3c7 100%);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.sb-card .leaf {
+  position: absolute;
+  top: -10px; right: -10px;
+  width: 80px; height: 80px;
+  background: radial-gradient(circle, var(--accent-mint), transparent 70%);
+  border-radius: 50%;
+  opacity: 0.4;
+}
+.sb-card h4 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  position: relative;
+}
+.sb-card .body {
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(4px);
+  border-radius: var(--r-md);
+  padding: 14px;
+  margin-top: 14px;
+  position: relative;
+}
+.sb-card .body .label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.sb-card .body .desc {
+  font-size: 11px;
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.sb-card .cta {
+  background: var(--ink);
+  color: #fff;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  position: relative;
+}
+
+/* MAIN */
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* TOPBAR */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.search {
+  flex: 1;
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--r-full);
+  padding: 14px 22px 14px 52px;
+  font-size: 14px;
+  color: var(--fg);
+}
+.search::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px; height: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+}
+.search input {
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+.search input::placeholder { color: var(--muted-2); }
+
+.tb-action {
+  width: 48px; height: 48px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+  position: relative;
+}
+.tb-action:hover { color: var(--primary); }
+.tb-action .ico { width: 18px; height: 18px; stroke-width: 2; }
+.tb-action .dot {
+  position: absolute;
+  top: 12px; right: 14px;
+  width: 8px; height: 8px;
+  background: var(--primary);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+}
+.tb-date {
+  background: var(--surface);
+  border-radius: var(--r-full);
+  padding: 12px 20px 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.tb-date .ico { width: 18px; height: 18px; stroke-width: 2; color: var(--fg-2); }
+
+.btn-primary-pill {
+  background: var(--primary);
+  color: #fff;
+  padding: 14px 24px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 180ms;
+}
+.btn-primary-pill:hover { background: var(--primary-hover); }
+.btn-primary-pill .ico { width: 16px; height: 16px; stroke-width: 2; }
+
+/* PAGE TITLE */
+.page-title {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -1.2px;
+  line-height: 1;
+  padding: 8px 0;
+}
+
+/* STAT CARDS GRID */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.stat-card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.stat-card .top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.stat-card .label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.stat-card .num {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+}
+.stat-card .icon-wrap {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+  flex-shrink: 0;
+}
+.stat-card .icon-wrap .ico { width: 18px; height: 18px; stroke-width: 1.75; }
+
+/* Equalizer mini chart */
+.equalizer {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 36px;
+  width: 100%;
+}
+.equalizer .bar {
+  flex: 1;
+  border-radius: 1px;
+  transition: opacity 180ms;
+}
+
+.stat-card .breakdown {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.stat-card .breakdown .num-sm {
+  font-family: var(--font-mono);
+  color: var(--fg);
+  font-weight: 600;
+}
+.stat-card .legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* CHARTS ROW */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1.2fr;
+  gap: 16px;
+}
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  position: relative;
+}
+.chart-card .head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.chart-card .head h3 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+.chart-card .head .arrow {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+}
+.chart-card .head .arrow .ico { width: 14px; height: 14px; stroke-width: 2; }
+
+.chart-meta {
+  margin-top: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.chart-meta .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.chart-meta .big-num {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-top: 4px;
+}
+.chart-meta .delta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 500;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.chart-meta .delta .ico { width: 14px; height: 14px; stroke-width: 2.5; }
+.chart-meta .delta.up { color: var(--success); }
+
+.chip-row { display: flex; gap: 8px; margin-top: 12px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.chip .num {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--fg);
+}
+.chip .label-sm {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+}
+
+/* SVG line chart inline */
+.line-chart {
+  margin-top: 16px;
+  width: 100%;
+  height: 140px;
+}
+.tooltip-inline {
+  position: absolute;
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+}
+.tooltip-inline::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px; height: 8px;
+  background: var(--ink);
+  border-radius: 1px;
+  rotate: 45deg;
+}
+
+/* SCHEDULE / NEXT card right column */
+.next-card .day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+.next-card .day {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  color: var(--fg-2);
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+.next-card .day.has {
+  background: var(--accent-amber-soft);
+  color: var(--fg);
+}
+.next-card .day.avatar-cell {
+  background: linear-gradient(135deg, #fde68a, #fbbf24);
+  color: #fff;
+}
+.next-card .day.avatar-coral { background: linear-gradient(135deg, var(--accent-coral), var(--primary)); color: #fff; }
+.next-card .day.avatar-violet { background: linear-gradient(135deg, var(--accent-violet), var(--accent-blue)); color: #fff; }
+.next-card .day.avatar-mint { background: linear-gradient(135deg, var(--accent-mint), var(--success)); color: #fff; }
+.next-card .day.dashed { border: 2px dashed var(--line-2); background: transparent; color: var(--muted-2); }
+
+.time-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+.time-pill {
+  background: var(--surface-2);
+  border-radius: var(--r-full);
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  color: var(--fg-2);
+}
+.time-pill.on { background: var(--ink); color: #fff; }
+
+.next-card .progress {
+  margin-top: 16px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, var(--accent-amber) 0%, var(--accent-mint) 35%, var(--accent-blue) 70%, var(--surface-2) 70%);
+  position: relative;
+}
+.next-card .progress .knob {
+  position: absolute;
+  width: 16px; height: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  top: -4px;
+  left: 70%;
+  display: flex; align-items: center; justify-content: center;
+}
+.next-card .progress .knob::after {
+  content: '';
+  width: 6px; height: 6px;
+  background: var(--fg-2);
+  border-radius: 50%;
+}
+.next-card .footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  gap: 12px;
+}
+.next-card .footer .col {
+  flex: 1;
+}
+.next-card .footer .label {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.next-card .footer .label::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+}
+.next-card .footer .col:nth-child(2) .label::before { background: var(--accent-amber); }
+.next-card .footer .desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.next-card .footer .stack-avatars {
+  display: flex;
+  margin-top: 10px;
+}
+.next-card .footer .stack-avatars .avatar {
+  border: 2px solid var(--surface);
+  margin-left: -8px;
+}
+.next-card .footer .stack-avatars .avatar:first-child { margin-left: 0; }
+
+/* BIG CHART CARD */
+.big-chart {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 28px;
+  position: relative;
+}
+.big-chart .head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.big-chart .head h3 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.big-chart .head .actions {
+  display: flex;
+  gap: 8px;
+}
+.big-chart .head .ic-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--fg-2);
+  display: flex; align-items: center; justify-content: center;
+}
+.big-chart .head .ic-btn.dark {
+  background: var(--ink);
+  color: #fff;
+}
+.big-chart .head .ic-btn .ico { width: 16px; height: 16px; stroke-width: 2; }
+
+.big-chart .meta {
+  margin-top: 16px;
+}
+.big-chart .meta .num {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+}
+.big-chart .meta .num .label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-left: 8px;
+}
+.big-chart .meta .delta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.bars-chart {
+  margin-top: 32px;
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 16px;
+  height: 380px;
+  position: relative;
+}
+.y-axis {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  height: 100%;
+  font-size: 11px;
+  color: var(--muted-2);
+  padding-bottom: 36px;
+  padding-top: 8px;
+  font-family: var(--font-mono);
+}
+.bars {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 18px;
+  height: 100%;
+  padding-bottom: 36px;
+  position: relative;
+}
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+  text-align: center;
+}
+.bar-col .label-top {
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.bar-col .num {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin: 2px 0 8px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.bar-col .bar-shape {
+  width: 100%;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  position: relative;
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255,255,255,0) 0,
+      rgba(255,255,255,0) 4px,
+      rgba(255,255,255,0.55) 4px,
+      rgba(255,255,255,0.55) 5px
+    );
+  flex-shrink: 0;
+}
+.bar-col.b1 .bar-shape { background-color: var(--accent-coral); }
+.bar-col.b2 .bar-shape { background-color: var(--accent-amber); }
+.bar-col.b3 .bar-shape { background-color: var(--primary); }
+.bar-col.b4 .bar-shape { background-color: var(--accent-violet); }
+.bar-col.b5 .bar-shape { background-color: var(--accent-blue); }
+
+.bar-col .bar-shape::before {
+  content: '';
+  position: absolute;
+  top: -3px; left: 0; right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.x-axis-labels {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding-top: 12px;
+}
+
+.tooltip-floating {
+  position: absolute;
+  background: var(--surface);
+  border-radius: var(--r-full);
+  padding: 8px 14px;
+  font-size: 11px;
+  display: flex;
+  gap: 12px;
+  box-shadow: var(--sh-overlay);
+  font-family: var(--font-mono);
+  z-index: 2;
+}
+.tooltip-floating .item { display: flex; flex-direction: column; gap: 0; }
+.tooltip-floating .item .v { font-weight: 700; color: var(--fg); }
+.tooltip-floating .item .k { font-size: 9px; color: var(--muted); }
+.tooltip-floating .item.hi .v { color: var(--primary); }
+
+/* ============================================================
+   DESIGN TOKENS section (after the showcase)
+   ============================================================ */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+.swatch {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.swatch .chip {
+  height: 64px;
+}
+.swatch .info { padding: 10px 12px; }
+.swatch .name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+.swatch .hex {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* TYPE SCALE */
+.type-row {
+  display: grid;
+  grid-template-columns: 80px 80px 1fr;
+  gap: 16px 24px;
+  align-items: baseline;
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  padding: 28px;
+}
+.type-row .lbl {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.type-row .px {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+/* COMPONENTS GENERIC */
+.demo-card {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* BUTTON */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: all 180ms;
+  white-space: nowrap;
+  font-size: 14px;
+  height: 44px;
+  padding: 0 22px;
+}
+.btn .ico { width: 16px; height: 16px; stroke-width: 2; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-secondary { background: var(--surface-2); color: var(--fg); }
+.btn-secondary:hover { background: var(--line); }
+.btn-ghost { color: var(--fg-2); }
+.btn-ghost:hover { background: var(--surface-2); }
+.btn-dark { background: var(--ink); color: #fff; }
+.btn-dark:hover { background: var(--ink-soft); }
+.btn-destructive { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+.btn-destructive:hover { background: var(--primary-soft); }
+.btn-sm { height: 36px; padding: 0 16px; font-size: 13px; }
+.btn-lg { height: 52px; padding: 0 28px; font-size: 15px; }
+.btn-icon-round {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* INPUT */
+.field { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+.field label { font-size: 13px; font-weight: 500; color: var(--fg-2); }
+.input {
+  height: 48px;
+  padding: 0 18px;
+  background: var(--surface-2);
+  border: none;
+  border-radius: var(--r-full);
+  font-size: 14px;
+  color: var(--fg);
+  transition: box-shadow 180ms;
+}
+.input::placeholder { color: var(--muted-2); }
+.input:focus { box-shadow: 0 0 0 2px var(--primary); }
+.input.error { box-shadow: 0 0 0 2px var(--primary); }
+.field .helper { font-size: 12px; color: var(--muted); padding-left: 18px; }
+.field .helper.error { color: var(--primary); }
+
+/* PILL / BADGE */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.pill-active { background: var(--accent-mint-soft); color: var(--success); }
+.pill-active .dot { background: var(--success); }
+.pill-escalated { background: var(--primary-soft); color: var(--primary); }
+.pill-escalated .dot { background: var(--primary); }
+.pill-closed { background: var(--surface-2); color: var(--muted); }
+.pill-closed .dot { background: var(--muted-2); }
+.pill-pending { background: var(--accent-amber-soft); color: #b45309; }
+.pill-pending .dot { background: var(--accent-amber); }
+.pill-info { background: var(--accent-blue-soft); color: var(--accent-blue); }
+.pill-info .dot { background: var(--accent-blue); }
+
+/* CARD generic */
+.card-demo {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 24px;
+}
+
+/* CHAT BUBBLES */
+.thread-demo {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+.bub-wrap { display: flex; flex-direction: column; gap: 4px; max-width: 70%; }
+.bub-wrap.student, .bub-wrap.bot { align-self: flex-start; }
+.bub-wrap.admin { align-self: flex-end; align-items: flex-end; }
+.bub {
+  padding: 12px 18px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.bub-student { background: var(--surface-2); color: var(--fg); border-radius: 18px 18px 18px 4px; }
+.bub-bot { background: var(--accent-blue-soft); color: var(--fg); border-radius: 18px 18px 18px 4px; }
+.bub-admin { background: var(--primary); color: #fff; border-radius: 18px 18px 4px 18px; }
+.bub-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  padding: 0 8px;
+}
+.bub-meta .low { color: var(--primary); font-weight: 600; }
+
+/* DO/DON'T */
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.compare > div {
+  border-radius: var(--r-lg);
+  padding: 20px;
+  background: var(--surface);
+}
+.compare .tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  margin-bottom: 14px;
+}
+.compare .do .tag { background: var(--accent-mint-soft); color: var(--success); }
+.compare .dont .tag { background: var(--primary-soft); color: var(--primary); }
+.compare .demo-area {
+  background: var(--bg);
+  border-radius: var(--r-md);
+  padding: 16px;
+  margin-bottom: 12px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.compare .note {
+  font-size: 13px;
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+
+/* helper */
+.svg-ico { display: inline-block; vertical-align: middle; }
+
+/* ============================================================
+   CONVERSATIONS VIEW (3 columns)
+   ============================================================ */
+.conv-shell {
+  background: var(--bg);
+  border-radius: var(--r-2xl);
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 320px 1fr 340px;
+  gap: 16px;
+  height: 820px;
+}
+
+/* LEFT — LIST */
+.conv-list-card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+.conv-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.conv-list-head h3 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+.conv-list-head .add-round {
+  width: 36px; height: 36px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.conv-list-head .add-round .ico { width: 14px; height: 14px; stroke-width: 2.5; }
+
+.conv-search-pill {
+  background: var(--surface-2);
+  border-radius: var(--r-full);
+  padding: 10px 16px 10px 44px;
+  position: relative;
+}
+.conv-search-pill::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+}
+.conv-search-pill input {
+  background: transparent;
+  border: none;
+  width: 100%;
+  font-size: 13px;
+}
+.conv-search-pill input::placeholder { color: var(--muted-2); }
+
+.conv-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.conv-tab {
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.conv-tab.active {
+  background: var(--ink);
+  color: #fff;
+}
+.conv-tab .count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+}
+.conv-tab.active .count {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+}
+
+.conv-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+  margin-right: -10px;
+  padding-right: 10px;
+}
+.conv-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  position: relative;
+  align-items: center;
+}
+.conv-item:hover { background: var(--surface-2); }
+.conv-item.escalated {
+  background: var(--primary-soft);
+}
+.conv-item.escalated:hover { background: #ffdfdf; }
+.conv-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px; bottom: 12px;
+  width: 3px;
+  background: var(--primary);
+  border-radius: 2px;
+}
+.conv-item.active { background: var(--surface-2); }
+.conv-item .info { min-width: 0; }
+.conv-item .name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-item .preview {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.conv-item .right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.conv-item .time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.conv-item .unread {
+  width: 18px; height: 18px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* CENTER — THREAD */
+.conv-thread-card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.thread-head-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.thread-head-bar .info { flex: 1; min-width: 0; }
+.thread-head-bar .name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+.thread-head-bar .meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.thread-head-bar .actions {
+  display: flex;
+  gap: 6px;
+}
+.thread-action {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--fg-2);
+  display: flex; align-items: center; justify-content: center;
+  transition: background 180ms;
+}
+.thread-action:hover { background: var(--line); }
+.thread-action.warn { background: var(--primary-soft); color: var(--primary); }
+.thread-action.warn:hover { background: #ffdfdf; }
+.thread-action .ico { width: 16px; height: 16px; stroke-width: 2; }
+
+.thread-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.thread-notice {
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: 6px 14px;
+  border-radius: var(--r-full);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+  margin: 6px 0;
+}
+
+.thread-reply-bar {
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.thread-reply-bar .left-actions {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.thread-reply-bar .ic-btn-mini {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--fg-2);
+  display: flex; align-items: center; justify-content: center;
+}
+.thread-reply-bar .ic-btn-mini:hover { background: var(--line); }
+.thread-reply-bar .ic-btn-mini .ico { width: 16px; height: 16px; stroke-width: 2; }
+.thread-reply-bar textarea {
+  flex: 1;
+  background: var(--surface-2);
+  border: none;
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  max-height: 120px;
+  line-height: 1.4;
+}
+.thread-reply-bar textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.thread-reply-bar textarea::placeholder { color: var(--muted-2); }
+.thread-reply-bar .send {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 180ms;
+}
+.thread-reply-bar .send:hover { background: var(--primary-hover); }
+.thread-reply-bar .send .ico { width: 18px; height: 18px; stroke-width: 2.5; }
+
+/* RIGHT — CONTACT INFO */
+.conv-info-card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.info-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+}
+.avatar-xl {
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fde68a, #fbbf24);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.info-hero .name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-top: 4px;
+}
+.info-hero .phone {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.info-hero .pill { margin-top: 4px; }
+
+.info-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.info-action {
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 180ms;
+}
+.info-action:hover { background: var(--line); }
+.info-action .ico-wrap {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+}
+.info-action.warn .ico-wrap { background: var(--primary-soft); color: var(--primary); }
+.info-action .ico-wrap .ico { width: 16px; height: 16px; stroke-width: 2; }
+.info-action .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+.info-block .head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.info-block .head h4 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.info-block .head .edit-link {
+  font-size: 11px;
+  color: var(--fg-2);
+  font-weight: 500;
+  cursor: pointer;
+}
+.info-block .head .edit-link:hover { color: var(--primary); }
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.info-grid .row .lbl {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.info-grid .row .val {
+  font-size: 13px;
+  font-weight: 500;
+}
+.info-grid .row .val.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.info-grid .row.full { grid-column: 1 / -1; }
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--fg-2);
+}
+.tag-pill.t-blue { background: var(--accent-blue-soft); color: var(--accent-blue); }
+.tag-pill.t-mint { background: var(--accent-mint-soft); color: var(--success); }
+.tag-pill.t-amber { background: var(--accent-amber-soft); color: #b45309; }
+.tag-pill.t-violet { background: var(--accent-violet-soft); color: var(--accent-violet); }
+.tag-pill.add {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.notes-area {
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--fg-2);
+  line-height: 1.5;
+  border: none;
+  width: 100%;
+  resize: none;
+  min-height: 72px;
+  font-family: inherit;
+}
+.notes-area:focus { outline: none; box-shadow: 0 0 0 2px var(--primary); }
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.history-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+}
+.history-item .dot-time {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.history-item.closed .dot-time { background: var(--success); }
+.history-item.escalated .dot-time { background: var(--primary); }
+.history-item.bot .dot-time { background: var(--accent-blue); }
+.history-item .h-info { flex: 1; min-width: 0; }
+.history-item .h-info .title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.history-item .h-info .when {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ============================================================
+       INTRO
+       ============================================================ -->
+  <div class="intro">
+    <h1>Chatbot <em>UPC</em> · Design System</h1>
+    <p class="sub">Panel administrativo de matrícula. Cards rounded, paleta cálida multicolor con UPC red como acento principal, equalizer charts en stats. Inspirado en producto consumer pero con la densidad de un CRM.</p>
+    <p class="meta">v0.3 · 2026-04-27 · Inter + JetBrains Mono</p>
+  </div>
+
+  <!-- ============================================================
+       MAIN SHOWCASE — DASHBOARD
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">01</span>
+      <h2>Dashboard del día</h2>
+      <span class="desc">HU31 · pantalla de inicio del CRM</span>
+    </div>
+
+    <div class="shell">
+
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <div class="sb-brand">
+          <div class="logo"></div>
+          <div class="name">UPC<span style="color:var(--primary);">Bot</span></div>
+        </div>
+
+        <div class="sb-item active">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Dashboard
+        </div>
+        <div class="sb-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Conversaciones
+        </div>
+        <div class="sb-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          Escaladas
+          <span class="badge">3</span>
+        </div>
+        <div class="sb-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg>
+          Documentos
+        </div>
+        <div class="sb-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7" cy="7" r="1"/></svg>
+          Intenciones
+        </div>
+        <div class="sb-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+          Reportes
+        </div>
+        <div class="sb-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          Configuración
+        </div>
+
+        <div class="sb-spacer"></div>
+
+        <div class="sb-user">
+          <div class="avatar user-photo">RL</div>
+          <div class="who">
+            <div class="name">Renzo Lenes</div>
+            <div class="id">ID: 72630284</div>
+          </div>
+        </div>
+
+        <div class="sb-card">
+          <div class="leaf"></div>
+          <h4>Modelo actualizado</h4>
+          <div class="body">
+            <div class="label">gpt-4o-mini v2</div>
+            <div class="desc">Mejora del 18% en clasificación de intenciones poco frecuentes.</div>
+          </div>
+          <button class="cta">Ver cambios →</button>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <div class="main">
+
+        <!-- TOPBAR -->
+        <div class="topbar">
+          <div class="search">
+            <input placeholder="Buscar conversación, estudiante o documento..." />
+          </div>
+          <button class="tb-action">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+            <span class="dot"></span>
+          </button>
+          <button class="tb-action">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+          </button>
+          <div class="tb-date">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            27 de abril, 2026
+          </div>
+          <button class="btn-primary-pill">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            Generar reporte
+          </button>
+        </div>
+
+        <!-- PAGE TITLE -->
+        <h1 class="page-title">Resumen</h1>
+
+        <!-- STAT CARDS -->
+        <div class="stats-grid">
+          <!-- Card 1 -->
+          <div class="stat-card">
+            <div class="top">
+              <div>
+                <div class="label">Conversaciones hoy</div>
+                <div class="num">1,247</div>
+              </div>
+              <div class="icon-wrap" style="background:var(--accent-mint-soft);color:var(--success);">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </div>
+            </div>
+            <div class="legend">
+              <span>Resueltas</span>
+              <span>Activas</span>
+            </div>
+            <!-- Equalizer mint→gray -->
+            <div class="equalizer" id="eq1"></div>
+            <div class="breakdown">
+              <span class="num-sm">1,062</span>
+              <span class="num-sm">142</span>
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="stat-card">
+            <div class="top">
+              <div>
+                <div class="label">Escaladas</div>
+                <div class="num">43</div>
+              </div>
+              <div class="icon-wrap" style="background:var(--primary-soft);color:var(--primary);">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              </div>
+            </div>
+            <div class="legend">
+              <span>Atendidas</span>
+              <span>Pendientes</span>
+            </div>
+            <div class="equalizer" id="eq2"></div>
+            <div class="breakdown">
+              <span class="num-sm">40</span>
+              <span class="num-sm">3</span>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="stat-card">
+            <div class="top">
+              <div>
+                <div class="label">Mensajes hoy</div>
+                <div class="num">3,891</div>
+              </div>
+              <div class="icon-wrap" style="background:var(--accent-amber-soft);color:#b45309;">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              </div>
+            </div>
+            <div class="legend">
+              <span>Recibidos</span>
+              <span>Enviados</span>
+            </div>
+            <div class="equalizer" id="eq3"></div>
+            <div class="breakdown">
+              <span class="num-sm">2,144</span>
+              <span class="num-sm">1,747</span>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="stat-card">
+            <div class="top">
+              <div>
+                <div class="label">Costo del día</div>
+                <div class="num">S/ 28.40</div>
+              </div>
+              <div class="icon-wrap" style="background:var(--accent-blue-soft);color:var(--accent-blue);">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+              </div>
+            </div>
+            <div class="legend">
+              <span>Tokens IN</span>
+              <span>Tokens OUT</span>
+            </div>
+            <div class="equalizer" id="eq4"></div>
+            <div class="breakdown">
+              <span class="num-sm">142k</span>
+              <span class="num-sm">38k</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHARTS ROW -->
+        <div class="charts-row">
+
+          <!-- Trends -->
+          <div class="chart-card" style="position:relative;">
+            <div class="head">
+              <h3>Conversaciones</h3>
+              <button class="arrow">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </button>
+            </div>
+            <div class="chart-meta">
+              <div>
+                <div class="label">Últimos 7 días</div>
+                <div class="big-num">8,420</div>
+                <div class="delta up">
+                  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                  +18.2%
+                </div>
+              </div>
+            </div>
+            <div class="chip-row">
+              <div class="chip">
+                <span class="num">1,062</span>
+                <span class="label-sm">resueltas</span>
+              </div>
+              <div class="chip">
+                <span class="num">43</span>
+                <span class="label-sm">escaladas</span>
+              </div>
+            </div>
+
+            <!-- Inline tooltip -->
+            <div class="tooltip-inline" style="left:62%;top:170px;">1,247</div>
+
+            <!-- Curve -->
+            <svg class="line-chart" viewBox="0 0 400 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="grad-mint" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#86efac" stop-opacity="0.4"/>
+                  <stop offset="100%" stop-color="#86efac" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,90 C30,85 50,95 70,80 S110,60 140,65 S190,40 220,30 S270,55 300,70 S350,90 400,75 L400,140 L0,140 Z" fill="url(#grad-mint)"/>
+              <path d="M0,90 C30,85 50,95 70,80 S110,60 140,65 S190,40 220,30 S270,55 300,70 S350,90 400,75" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="248" cy="42" r="5" fill="var(--success)" stroke="#fff" stroke-width="2"/>
+            </svg>
+          </div>
+
+          <!-- Latency -->
+          <div class="chart-card">
+            <div class="head">
+              <h3>Latencia</h3>
+              <button class="arrow">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </button>
+            </div>
+            <div class="chart-meta">
+              <div>
+                <div class="big-num">1.42s</div>
+                <div class="delta up">
+                  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+                  -120ms p95
+                </div>
+              </div>
+            </div>
+
+            <!-- Multi-line wave chart -->
+            <svg class="line-chart" viewBox="0 0 300 140" preserveAspectRatio="none" style="margin-top:24px;">
+              <path d="M0,80 Q40,40 80,60 T160,55 T240,70 T300,50" fill="none" stroke="var(--muted-2)" stroke-width="1.5" opacity="0.4"/>
+              <path d="M0,90 Q40,70 80,90 T160,80 T240,95 T300,80" fill="none" stroke="var(--accent-mint)" stroke-width="2.5"/>
+              <path d="M0,70 Q40,90 80,75 T160,90 T240,65 T300,85" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
+              <circle cx="158" cy="85" r="4" fill="var(--ink)"/>
+            </svg>
+            <div class="tooltip-inline" style="left:48%;top:200px;">1.42s</div>
+          </div>
+
+          <!-- Próximas escaladas / agenda -->
+          <div class="chart-card next-card">
+            <div class="head">
+              <h3>Cola escaladas</h3>
+              <button class="arrow">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </button>
+            </div>
+            <div style="margin-top:14px;font-size:13px;color:var(--muted);">3 estudiantes esperando</div>
+
+            <div class="day-grid">
+              <div class="day avatar-cell">JC</div>
+              <div class="day avatar-coral">MP</div>
+              <div class="day avatar-violet">RP</div>
+              <div class="day dashed">+</div>
+              <div class="day">14</div>
+              <div class="day">15</div>
+              <div class="day">16</div>
+            </div>
+
+            <div style="margin-top:16px;font-size:13px;color:var(--fg);font-weight:600;">Slots disponibles hoy</div>
+            <div class="time-grid">
+              <div class="time-pill">10:00</div>
+              <div class="time-pill">11:00</div>
+              <div class="time-pill on">12:00</div>
+              <div class="time-pill">13:00</div>
+              <div class="time-pill">14:00</div>
+              <div class="time-pill">15:00</div>
+              <div class="time-pill">16:00</div>
+              <div class="time-pill">17:00</div>
+            </div>
+
+            <div class="progress">
+              <div class="knob"></div>
+            </div>
+
+            <div class="footer">
+              <div class="col">
+                <div class="label">8 atendidas</div>
+                <div class="desc">por humanos hoy</div>
+                <div class="stack-avatars">
+                  <div class="avatar sm">RL</div>
+                  <div class="avatar sm" style="background:linear-gradient(135deg,var(--accent-violet),var(--accent-blue));">JM</div>
+                  <div class="avatar sm" style="background:linear-gradient(135deg,var(--accent-mint),var(--success));">SC</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="label">3 pendientes</div>
+                <div class="desc">en cola activa</div>
+                <div class="stack-avatars">
+                  <div class="avatar sm" style="background:linear-gradient(135deg,#fde68a,#fbbf24);">MP</div>
+                  <div class="avatar sm" style="background:linear-gradient(135deg,var(--accent-coral),var(--primary));">JC</div>
+                  <div class="avatar sm" style="background:linear-gradient(135deg,var(--accent-violet),#9333ea);">RP</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BIG CHART -->
+        <div class="big-chart">
+          <div class="head">
+            <div>
+              <h3>Intenciones más frecuentes</h3>
+              <div class="meta">
+                <div class="num">1,247 <span class="label">conversaciones · top 5 intenciones</span></div>
+                <div class="delta">↘ -3.5% fallback rate vs ayer</div>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="ic-btn">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg>
+              </button>
+              <button class="ic-btn dark">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="bars-chart">
+            <div class="y-axis">
+              <span>0</span>
+              <span>250</span>
+              <span>500</span>
+              <span>750</span>
+              <span>1k</span>
+            </div>
+            <div class="bars">
+              <div class="bar-col b1">
+                <span class="label-top">conv</span>
+                <span class="num">312</span>
+                <div class="bar-shape" style="height:80%;"></div>
+              </div>
+              <div class="bar-col b2">
+                <span class="label-top">conv</span>
+                <span class="num">268</span>
+                <div class="bar-shape" style="height:68%;"></div>
+              </div>
+              <div class="bar-col b3" style="position:relative;">
+                <span class="label-top">conv</span>
+                <span class="num">214</span>
+                <div class="bar-shape" style="height:56%;"></div>
+                <div class="tooltip-floating" style="bottom:60%;left:50%;transform:translateX(-50%);">
+                  <div class="item hi"><span class="v">17.1%</span><span class="k">fechas_pago</span></div>
+                  <div class="item"><span class="v">21.4%</span><span class="k">aranceles</span></div>
+                  <div class="item"><span class="v">25.0%</span><span class="k">requisitos</span></div>
+                  <div class="item"><span class="v">10.2%</span><span class="k">cursos</span></div>
+                </div>
+              </div>
+              <div class="bar-col b4">
+                <span class="label-top">conv</span>
+                <span class="num">158</span>
+                <div class="bar-shape" style="height:42%;"></div>
+              </div>
+              <div class="bar-col b5">
+                <span class="label-top">conv</span>
+                <span class="num">128</span>
+                <div class="bar-shape" style="height:34%;"></div>
+              </div>
+            </div>
+            <div class="x-axis-labels" style="grid-column:2;">
+              <span>requisitos</span>
+              <span>aranceles</span>
+              <span>fechas_pago</span>
+              <span>cursos</span>
+              <span>cronograma</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       2. COLOR TOKENS
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">02</span>
+      <h2>Paleta</h2>
+      <span class="desc">UPC red primary + 5 accents cálidos</span>
+    </div>
+
+    <div class="subsection-head">Primary — UPC red</div>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#d50000;"></div><div class="info"><div class="name">primary</div><div class="hex">#D50000</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#b80000;"></div><div class="info"><div class="name">primary-hover</div><div class="hex">#B80000</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#ffeaea;"></div><div class="info"><div class="name">primary-soft</div><div class="hex">#FFEAEA</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#1c1917;"></div><div class="info"><div class="name">ink</div><div class="hex">#1C1917</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#f5f3ef;"></div><div class="info"><div class="name">bg</div><div class="hex">#F5F3EF</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#ffffff;border:1px solid var(--line);"></div><div class="info"><div class="name">surface</div><div class="hex">#FFFFFF</div></div></div>
+    </div>
+
+    <div class="subsection-head">Accents — uso para charts y categorías</div>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#ff7a6e;"></div><div class="info"><div class="name">coral</div><div class="hex">#FF7A6E</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#f5a623;"></div><div class="info"><div class="name">amber</div><div class="hex">#F5A623</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#4ade80;"></div><div class="info"><div class="name">mint</div><div class="hex">#4ADE80</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#3b82f6;"></div><div class="info"><div class="name">blue</div><div class="hex">#3B82F6</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#8b5cf6;"></div><div class="info"><div class="name">violet</div><div class="hex">#8B5CF6</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#16a34a;"></div><div class="info"><div class="name">success</div><div class="hex">#16A34A</div></div></div>
+    </div>
+
+    <div class="subsection-head">Texto + lines</div>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#1c1917;"></div><div class="info"><div class="name">fg</div><div class="hex">#1C1917</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#44403c;"></div><div class="info"><div class="name">fg-2</div><div class="hex">#44403C</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#78716c;"></div><div class="info"><div class="name">muted</div><div class="hex">#78716C</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#a8a29e;"></div><div class="info"><div class="name">muted-2</div><div class="hex">#A8A29E</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#ebe8e1;"></div><div class="info"><div class="name">line</div><div class="hex">#EBE8E1</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#faf8f4;"></div><div class="info"><div class="name">surface-2</div><div class="hex">#FAF8F4</div></div></div>
+    </div>
+
+    <p style="font-size:13px;color:var(--muted);margin-top:24px;max-width:720px;">
+      <strong>Reglas de uso:</strong> el rojo UPC es el único color de marca — botón primario, escalado, focus ring, logo. Los 5 accents (coral, amber, mint, blue, violet) son para diferenciar categorías en charts y stat cards. Cada stat card tiene un color asignado y consistente. Nunca usar accents para botones primarios.
+    </p>
+  </section>
+
+  <!-- ============================================================
+       3. TYPE
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">03</span>
+      <h2>Tipografía</h2>
+      <span class="desc">Inter (UI · todos los pesos) · JetBrains Mono (datos)</span>
+    </div>
+
+    <div class="type-row">
+      <span class="lbl">display</span><span class="px">44 / 700</span><span style="font-size:44px;font-weight:700;letter-spacing:-1.2px;">Resumen del día</span>
+      <span class="lbl">h1</span><span class="px">40 / 700</span><span style="font-size:40px;font-weight:700;letter-spacing:-1px;">Conversaciones <em style="color:var(--primary);font-style:normal;">UPC</em></span>
+      <span class="lbl">h2</span><span class="px">26 / 700</span><span style="font-size:26px;font-weight:700;letter-spacing:-0.5px;">Intenciones más frecuentes</span>
+      <span class="lbl">h3</span><span class="px">22 / 700</span><span style="font-size:22px;font-weight:700;letter-spacing:-0.4px;">Cola de escaladas</span>
+      <span class="lbl">stat</span><span class="px">32 / 700</span><span style="font-size:32px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;">1,247</span>
+      <span class="lbl">body</span><span class="px">14 / 400</span><span style="font-size:14px;">Cuerpo de texto principal — descripciones, párrafos, body de modal.</span>
+      <span class="lbl">body-sm</span><span class="px">13 / 500</span><span style="font-size:13px;font-weight:500;">Texto en buttons, items de sidebar, headers de tabla.</span>
+      <span class="lbl">label</span><span class="px">12 / 500</span><span style="font-size:12px;font-weight:500;color:var(--muted);">Conversaciones hoy · labels de stat cards</span>
+      <span class="lbl">mono</span><span class="px">11 / 500</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">+51 999 888 777 · 09:14 · conv_a3f8</span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       4. BUTTONS
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">04</span>
+      <h2>Buttons</h2>
+      <span class="desc">Pill-shaped · primary rojo UPC · dark para "+" circular</span>
+    </div>
+
+    <div class="demo-card">
+      <button class="btn btn-primary">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg>
+        Generar reporte
+      </button>
+      <button class="btn btn-secondary">Cancelar</button>
+      <button class="btn btn-dark">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+        Nueva intención
+      </button>
+      <button class="btn btn-destructive">Eliminar conversación</button>
+      <button class="btn btn-ghost">Ver más</button>
+      <button class="btn btn-icon-round btn-dark">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="btn btn-icon-round btn-secondary">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg>
+      </button>
+    </div>
+
+    <div class="demo-card">
+      <button class="btn btn-primary btn-sm">SM</button>
+      <button class="btn btn-primary">MD (default)</button>
+      <button class="btn btn-primary btn-lg">LG · login submit</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       5. INPUTS
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">05</span>
+      <h2>Inputs</h2>
+      <span class="desc">Pill rounded sobre surface-2 · focus ring rojo UPC</span>
+    </div>
+
+    <div class="demo-grid">
+      <div class="field">
+        <label>Email institucional</label>
+        <input class="input" type="email" placeholder="admin@upc.edu.pe" />
+        <span class="helper">Tu correo @upc.edu.pe.</span>
+      </div>
+      <div class="field">
+        <label>Buscar conversación</label>
+        <input class="input" placeholder="Por nombre, teléfono o intent..." />
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input class="input error" type="password" value="••••" />
+        <span class="helper error">Contraseña incorrecta.</span>
+      </div>
+      <div class="field">
+        <label>Estado de conversación</label>
+        <input class="input" placeholder="Seleccionar..." />
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       6. PILLS
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">06</span>
+      <h2>Status pills</h2>
+      <span class="desc">Multi-color con dot indicator</span>
+    </div>
+
+    <div class="demo-card">
+      <span class="pill pill-active"><span class="dot"></span>Activa</span>
+      <span class="pill pill-escalated"><span class="dot"></span>Escalada</span>
+      <span class="pill pill-pending"><span class="dot"></span>Pendiente</span>
+      <span class="pill pill-closed"><span class="dot"></span>Cerrada</span>
+      <span class="pill pill-info"><span class="dot"></span>En cola</span>
+    </div>
+
+    <div class="subsection-head">Intent confidence chips</div>
+    <div class="demo-card">
+      <span class="pill pill-active" style="font-family:var(--font-mono);font-weight:500;">saludo · 0.98</span>
+      <span class="pill pill-info" style="font-family:var(--font-mono);font-weight:500;">fechas_pago · 0.72</span>
+      <span class="pill pill-pending" style="font-family:var(--font-mono);font-weight:500;">cursos · 0.61</span>
+      <span class="pill pill-escalated" style="font-family:var(--font-mono);font-weight:500;">fallback · 0.41</span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       7. CONVERSATIONS VIEW (lista + thread + contacto)
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">07</span>
+      <h2>Vista de conversaciones</h2>
+      <span class="desc">HU27 · HU28 · HU29 — lista densa + thread + información de contacto</span>
+    </div>
+
+    <div class="conv-shell">
+
+      <!-- LEFT: LIST -->
+      <aside class="conv-list-card">
+        <div class="conv-list-head">
+          <h3>Mensajes</h3>
+          <button class="add-round">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        <div class="conv-search-pill">
+          <input placeholder="Buscar por nombre o teléfono..." />
+        </div>
+
+        <div class="conv-tabs">
+          <span class="conv-tab active">Todas <span class="count">47</span></span>
+          <span class="conv-tab">Escaladas <span class="count">3</span></span>
+          <span class="conv-tab">Activas <span class="count">12</span></span>
+          <span class="conv-tab">Cerradas</span>
+        </div>
+
+        <div class="conv-items">
+
+          <div class="conv-item escalated active">
+            <div class="avatar" style="background:linear-gradient(135deg,#fde68a,#fbbf24);">MP</div>
+            <div class="info">
+              <div class="name">María Paula Rivera</div>
+              <div class="preview">y si ya me matriculé pero no pagué?</div>
+            </div>
+            <div class="right">
+              <span class="time">09:16</span>
+              <span class="unread">2</span>
+            </div>
+          </div>
+
+          <div class="conv-item escalated">
+            <div class="avatar" style="background:linear-gradient(135deg,var(--accent-coral),var(--primary));">JC</div>
+            <div class="info">
+              <div class="name">Juan Carlos Méndez</div>
+              <div class="preview">no entiendo el cargo por reincorporación</div>
+            </div>
+            <div class="right">
+              <span class="time">09:12</span>
+              <span class="unread">5</span>
+            </div>
+          </div>
+
+          <div class="conv-item escalated">
+            <div class="avatar" style="background:linear-gradient(135deg,var(--accent-violet),#9333ea);">RP</div>
+            <div class="info">
+              <div class="name">Roberto Paz</div>
+              <div class="preview">mi pago no se refleja en el sistema</div>
+            </div>
+            <div class="right">
+              <span class="time">08:41</span>
+              <span class="unread">1</span>
+            </div>
+          </div>
+
+          <div class="conv-item">
+            <div class="avatar" style="background:linear-gradient(135deg,var(--accent-mint),var(--success));">LS</div>
+            <div class="info">
+              <div class="name">Lucía Soto</div>
+              <div class="preview">gracias por la ayuda!</div>
+            </div>
+            <div class="right">
+              <span class="time">09:08</span>
+            </div>
+          </div>
+
+          <div class="conv-item">
+            <div class="avatar" style="background:linear-gradient(135deg,var(--accent-blue),var(--accent-violet));">DR</div>
+            <div class="info">
+              <div class="name">Diego Ramírez</div>
+              <div class="preview">qué requisitos necesito para matrícula</div>
+            </div>
+            <div class="right">
+              <span class="time">08:54</span>
+            </div>
+          </div>
+
+          <div class="conv-item">
+            <div class="avatar" style="background:linear-gradient(135deg,#fda4af,#f43f5e);">VG</div>
+            <div class="info">
+              <div class="name">Valentina García</div>
+              <div class="preview">cuáles son las fechas de matrícula?</div>
+            </div>
+            <div class="right">
+              <span class="time">08:32</span>
+            </div>
+          </div>
+
+          <div class="conv-item">
+            <div class="avatar" style="background:linear-gradient(135deg,#a7f3d0,#10b981);">SC</div>
+            <div class="info">
+              <div class="name">Sebastián Castro</div>
+              <div class="preview">listo, ya hice el pago</div>
+            </div>
+            <div class="right">
+              <span class="time">08:14</span>
+            </div>
+          </div>
+
+          <div class="conv-item">
+            <div class="avatar" style="background:linear-gradient(135deg,#c4b5fd,#7c3aed);">AM</div>
+            <div class="info">
+              <div class="name">Andrea Mendoza</div>
+              <div class="preview">a qué hora abre la oficina?</div>
+            </div>
+            <div class="right">
+              <span class="time">07:58</span>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+
+      <!-- CENTER: THREAD -->
+      <section class="conv-thread-card">
+
+        <div class="thread-head-bar">
+          <div class="avatar" style="background:linear-gradient(135deg,#fde68a,#fbbf24);">MP</div>
+          <div class="info">
+            <div class="name">María Paula Rivera</div>
+            <div class="meta">+51 999 888 777 · activa desde 09:14 · 6 mensajes</div>
+          </div>
+          <div class="actions">
+            <button class="thread-action" title="Llamar">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+            </button>
+            <button class="thread-action" title="Información">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            </button>
+            <button class="thread-action warn" title="Cerrar conversación">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="thread-body">
+
+          <div class="bub-wrap student">
+            <div class="bub bub-student">hola buenas tardes</div>
+            <div class="bub-meta"><span>09:14</span><span>·</span><span>saludo · 0.98</span></div>
+          </div>
+
+          <div class="bub-wrap bot">
+            <div class="bub bub-bot">¡Hola! Soy el asistente de matrícula UPC 👋 Puedo ayudarte con fechas, costos, requisitos o cursos.</div>
+            <div class="bub-meta"><span>bot · 09:14 · 1.1s</span></div>
+          </div>
+
+          <div class="bub-wrap student">
+            <div class="bub bub-student">cuando es el pago del primer ciclo</div>
+            <div class="bub-meta"><span>09:15</span><span>·</span><span>fechas_pago · 0.72</span></div>
+          </div>
+
+          <div class="bub-wrap bot">
+            <div class="bub bub-bot">El pago del primer ciclo vence el <strong>15 de mayo</strong>. Después de esa fecha aplica un recargo del 5% por mora.</div>
+            <div class="bub-meta"><span>bot · 09:15 · 1.4s · RAG: aranceles_2026.pdf</span></div>
+          </div>
+
+          <div class="bub-wrap student">
+            <div class="bub bub-student">y si ya me matriculé pero no pagué?</div>
+            <div class="bub-meta"><span>09:16</span><span>·</span><span class="low">fallback · 0.41 ⚠</span></div>
+          </div>
+
+          <div class="thread-notice">Conversación escalada · 09:17</div>
+
+          <div class="bub-wrap admin">
+            <div class="bub bub-admin">Hola María Paula, te ayudo con eso. El plazo de pago se extiende 7 días con un recargo del 5%. Si ya pasaron, contáctanos por mesa de ayuda.</div>
+            <div class="bub-meta"><span>admin · Renzo · 09:19</span></div>
+          </div>
+
+          <div class="bub-wrap student">
+            <div class="bub bub-student">muchas gracias 🙏</div>
+            <div class="bub-meta"><span>09:20</span><span>·</span><span>despedida · 0.91</span></div>
+          </div>
+
+        </div>
+
+        <div class="thread-reply-bar">
+          <div class="left-actions">
+            <button class="ic-btn-mini" title="Adjuntar">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <button class="ic-btn-mini" title="Plantillas">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            </button>
+          </div>
+          <textarea placeholder="Escribe tu respuesta... (⌘+Enter para enviar)"></textarea>
+          <button class="send" title="Enviar">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+
+      </section>
+
+      <!-- RIGHT: CONTACT INFO -->
+      <aside class="conv-info-card">
+
+        <div class="info-hero">
+          <div class="avatar-xl">MP</div>
+          <div class="name">María Paula Rivera</div>
+          <div class="phone">+51 999 888 777</div>
+          <span class="pill pill-escalated"><span class="dot"></span>Escalada</span>
+        </div>
+
+        <div class="info-actions">
+          <div class="info-action">
+            <div class="ico-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <span class="lbl">Email</span>
+          </div>
+          <div class="info-action">
+            <div class="ico-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+            </div>
+            <span class="lbl">Llamar</span>
+          </div>
+          <div class="info-action warn">
+            <div class="ico-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>
+            </div>
+            <span class="lbl">Bloquear</span>
+          </div>
+        </div>
+
+        <div class="info-block">
+          <div class="head">
+            <h4>Información del estudiante</h4>
+            <span class="edit-link">Editar</span>
+          </div>
+          <div class="info-grid">
+            <div class="row">
+              <div class="lbl">ID UPC</div>
+              <div class="val mono">U20211234</div>
+            </div>
+            <div class="row">
+              <div class="lbl">Ciclo</div>
+              <div class="val">6° (2026-1)</div>
+            </div>
+            <div class="row full">
+              <div class="lbl">Carrera</div>
+              <div class="val">Ingeniería de Sistemas</div>
+            </div>
+            <div class="row">
+              <div class="lbl">Email</div>
+              <div class="val mono">u20211234@upc.edu.pe</div>
+            </div>
+            <div class="row">
+              <div class="lbl">Última conexión</div>
+              <div class="val mono">14 abr · 18:42</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-block">
+          <div class="head">
+            <h4>Etiquetas</h4>
+            <span class="edit-link">+ agregar</span>
+          </div>
+          <div class="tags-list">
+            <span class="tag-pill t-blue">matrícula</span>
+            <span class="tag-pill t-amber">pago pendiente</span>
+            <span class="tag-pill t-violet">estudiante regular</span>
+            <span class="tag-pill add">+ etiqueta</span>
+          </div>
+        </div>
+
+        <div class="info-block">
+          <div class="head">
+            <h4>Notas internas</h4>
+            <span class="edit-link">Guardar</span>
+          </div>
+          <textarea class="notes-area" placeholder="Solo visible para administradores...">Llamó el 12 abril preguntando por extensión de plazo. Confirmar con cobranzas si se procesó el pago tardío.</textarea>
+        </div>
+
+        <div class="info-block">
+          <div class="head">
+            <h4>Historial · 4 conversaciones</h4>
+            <span class="edit-link">Ver todas</span>
+          </div>
+          <div class="history-list">
+            <div class="history-item closed">
+              <div class="dot-time"></div>
+              <div class="h-info">
+                <div class="title">Consulta sobre fechas de matrícula</div>
+                <div class="when">14 abr · 18:42 · resuelta por bot</div>
+              </div>
+            </div>
+            <div class="history-item escalated">
+              <div class="dot-time"></div>
+              <div class="h-info">
+                <div class="title">Cargo extra no identificado</div>
+                <div class="when">02 abr · 11:15 · escalada → cerrada</div>
+              </div>
+            </div>
+            <div class="history-item bot">
+              <div class="dot-time"></div>
+              <div class="h-info">
+                <div class="title">Cronograma de exámenes parciales</div>
+                <div class="when">28 mar · 09:30 · resuelta por bot</div>
+              </div>
+            </div>
+            <div class="history-item closed">
+              <div class="dot-time"></div>
+              <div class="h-info">
+                <div class="title">Requisitos cambio de carrera</div>
+                <div class="when">15 mar · 16:08 · resuelta por bot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       8. DO / DON'T
+       ============================================================ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">08</span>
+      <h2>Do &amp; Don't</h2>
+      <span class="desc">Reglas no negociables</span>
+    </div>
+
+    <div class="subsection-head">01 — Rojo UPC solo en momentos fuertes</div>
+    <div class="compare">
+      <div class="do">
+        <span class="tag">Do</span>
+        <div class="demo-area">
+          <button class="btn btn-primary">Generar reporte</button>
+          <span class="pill pill-escalated"><span class="dot"></span>Escalada</span>
+        </div>
+        <p class="note">Botón primario, estado escalado, focus ring, logo. Lugares de alto significado.</p>
+      </div>
+      <div class="dont">
+        <span class="tag">Don't</span>
+        <div class="demo-area" style="background:var(--primary-soft);">
+          <span style="color:var(--primary);font-weight:600;">Texto decorativo en rojo</span>
+          <button class="btn" style="background:var(--primary);color:#fff;">Cancelar</button>
+        </div>
+        <p class="note">Rojo en texto decorativo o en acciones secundarias diluye el peso del color institucional.</p>
+      </div>
+    </div>
+
+    <div class="subsection-head">02 — Cards rounded grandes, sin bordes duros</div>
+    <div class="compare">
+      <div class="do">
+        <span class="tag">Do</span>
+        <div class="demo-area">
+          <div class="card-demo" style="background:#fff;width:100%;border-radius:var(--r-xl);padding:20px;">
+            <div style="font-size:13px;color:var(--muted);">Conversaciones hoy</div>
+            <div style="font-size:32px;font-weight:700;letter-spacing:-1px;margin-top:4px;">1,247</div>
+          </div>
+        </div>
+        <p class="note">Radius 24px, sin border, sombra mínima. Look amigable, consumer-grade.</p>
+      </div>
+      <div class="dont">
+        <span class="tag">Don't</span>
+        <div class="demo-area">
+          <div style="background:#fff;width:100%;padding:20px;border:1px solid var(--line);border-radius:6px;">
+            <div style="font-size:13px;color:var(--muted);">Conversaciones hoy</div>
+            <div style="font-size:32px;font-weight:700;letter-spacing:-1px;margin-top:4px;">1,247</div>
+          </div>
+        </div>
+        <p class="note">Border 1px + radius pequeño es aspecto de form de banco. No es la dirección de este sistema.</p>
+      </div>
+    </div>
+
+    <div class="subsection-head">03 — Buttons pill-shaped</div>
+    <div class="compare">
+      <div class="do">
+        <span class="tag">Do</span>
+        <div class="demo-area">
+          <button class="btn btn-primary">Generar reporte</button>
+          <button class="btn btn-secondary">Cancelar</button>
+        </div>
+        <p class="note">Border-radius full (pill). Touch-friendly, confiado.</p>
+      </div>
+      <div class="dont">
+        <span class="tag">Don't</span>
+        <div class="demo-area">
+          <button class="btn btn-primary" style="border-radius:6px;">Generar reporte</button>
+          <button class="btn btn-secondary" style="border-radius:6px;">Cancelar</button>
+        </div>
+        <p class="note">Radius bajo se siente corporativo y rígido. No combina con el resto del sistema rounded.</p>
+      </div>
+    </div>
+
+    <div class="subsection-head">04 — Cada stat card mantiene su color</div>
+    <div class="compare">
+      <div class="do">
+        <span class="tag">Do</span>
+        <div class="demo-area" style="gap:8px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span class="pill" style="background:var(--accent-mint-soft);color:var(--success);">Conversaciones</span>
+            <span class="pill" style="background:var(--primary-soft);color:var(--primary);">Escaladas</span>
+            <span class="pill" style="background:var(--accent-amber-soft);color:#b45309;">Mensajes</span>
+            <span class="pill" style="background:var(--accent-blue-soft);color:var(--accent-blue);">Costo</span>
+          </div>
+        </div>
+        <p class="note">El color es parte de la identidad de cada KPI. Conversaciones=mint, Escaladas=red, Mensajes=amber, Costo=blue. Siempre así.</p>
+      </div>
+      <div class="dont">
+        <span class="tag">Don't</span>
+        <div class="demo-area" style="gap:8px;">
+          <div style="display:flex;gap:6px;">
+            <span class="pill" style="background:var(--accent-blue-soft);color:var(--accent-blue);">Conversaciones</span>
+            <span class="pill" style="background:var(--accent-mint-soft);color:var(--success);">Escaladas</span>
+          </div>
+        </div>
+        <p class="note">Rotar colores de KPIs entre vistas confunde la lectura rápida. La asignación es fija.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <footer style="margin-top:64px;padding:32px;background:var(--surface);border-radius:var(--r-xl);display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">
+      Chatbot UPC · Design System v0.3 · 2026
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="pill pill-active"><span class="dot"></span>Inter</span>
+      <span class="pill pill-info"><span class="dot"></span>JetBrains Mono</span>
+      <span class="pill pill-pending"><span class="dot"></span>UPC #D50000</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+// Generate equalizer bars
+function makeEqualizer(id, color, ratio) {
+  const el = document.getElementById(id);
+  const N = 56;
+  const heights = [];
+  // pseudo-random but deterministic
+  let seed = id.charCodeAt(2) * 13;
+  for (let i = 0; i < N; i++) {
+    seed = (seed * 9301 + 49297) % 233280;
+    heights.push(0.3 + (seed / 233280) * 0.7);
+  }
+  // smooth a bit
+  for (let i = 1; i < N - 1; i++) {
+    heights[i] = (heights[i-1] + heights[i] + heights[i+1]) / 3;
+  }
+  el.innerHTML = heights.map((h, i) => {
+    const active = i / N < ratio;
+    const c = active ? color : '#e7e5e4';
+    return `<div class="bar" style="height:${h * 100}%;background:${c};"></div>`;
+  }).join('');
+}
+
+makeEqualizer('eq1', 'var(--accent-mint)', 0.85);
+makeEqualizer('eq2', 'var(--primary)', 0.93);
+makeEqualizer('eq3', 'var(--accent-amber)', 0.55);
+makeEqualizer('eq4', 'var(--accent-blue)', 0.88);
+</script>
+
+</body>
+</html>

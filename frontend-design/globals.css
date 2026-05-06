@@ -1,0 +1,212 @@
+/* ============================================================
+   Chatbot UPC Admin · globals.css
+   Variables CSS, reset mínimo y estilos base.
+   Cargar fuentes via next/font en app/layout.tsx — esto solo
+   referencia las CSS variables que next/font expone.
+   ============================================================ */
+
+:root {
+  /* Surfaces — warm off-white */
+  --bg: #fcfcfb;
+  --surface: #ffffff;
+  --surface-2: #f7f6f3;
+
+  /* Text — Zinc 900 con cast cálido */
+  --fg: #18181b;
+  --fg-2: #44403c;
+  --muted: #78716c;       /* Stone 500 */
+  --muted-2: #a8a29e;     /* Stone 400 */
+
+  /* Accent */
+  --accent: #18181b;
+  --accent-fg: #ffffff;
+
+  /* Borders — Stone */
+  --line: #e7e5e4;        /* Stone 200 */
+  --line-2: #d6d3d1;      /* Stone 300 */
+
+  /* Signal — terracota peruano */
+  --signal: #b5411c;
+  --signal-soft: #fbf1ec;
+
+  /* Success — verde más oscuro */
+  --success: #15803d;
+  --success-soft: #f0fdf4;
+
+  /* UPC institucional — uso restringido (focus, links, sidebar active) */
+  --upc: #a01e2d;
+  --upc-soft: #fbeef0;
+
+  /* Fonts — set by next/font in layout.tsx */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
+
+  /* Layout */
+  --sidebar-w: 240px;
+  --topbar-h: 56px;
+  --content-max: 1440px;
+}
+
+/* ============================================================
+   Reset mínimo
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Headings — defaults; override per-component */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--fg);
+}
+
+/* ============================================================
+   Focus visible — siempre visible, nunca quitar
+   ============================================================ */
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--upc);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* ============================================================
+   Selection — UPC institucional
+   ============================================================ */
+
+::selection {
+  background: var(--upc);
+  color: #ffffff;
+}
+
+/* ============================================================
+   Links — UPC institucional
+   ============================================================ */
+
+a.link {
+  color: var(--upc);
+  border-bottom: 1px solid color-mix(in srgb, var(--upc) 25%, transparent);
+  transition: border-color 180ms;
+}
+
+a.link:hover {
+  border-bottom-color: var(--upc);
+}
+
+/* ============================================================
+   Scrollbars — estilo macOS fino
+   ============================================================ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-2);
+}
+
+/* ============================================================
+   Numeric tabular — toda la metadata mono usa esto
+   ============================================================ */
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ============================================================
+   Min-width gate (CRM solo desktop)
+   ============================================================ */
+
+@media (max-width: 1023px) {
+  .desktop-only-gate {
+    display: flex;
+  }
+}
+
+@media (min-width: 1024px) {
+  .desktop-only-gate {
+    display: none;
+  }
+}
