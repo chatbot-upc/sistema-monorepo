@@ -1,7 +1,8 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -13,11 +14,17 @@ class Settings(BaseSettings):
 
     env: Literal["local", "staging", "production"] = "local"
     log_level: str = "INFO"
-    cors_origins: list[str] = ["http://localhost:3000"]
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
-    database_url: str = "postgresql+asyncpg://chatbot:chatbot@localhost:5432/chatbot"
-    database_url_sync: str = "postgresql://chatbot:chatbot@localhost:5432/chatbot"
+    database_url: str
     redis_url: str = "redis://localhost:6379/0"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
 
 @lru_cache
