@@ -41,12 +41,12 @@ async def get_document(
     return result
 
 
-@router.post("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("")
 async def upload(_: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 3")
 
 
-@router.delete("/{document_id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.delete("/{document_id}")
 async def delete_document(
     document_id: int, _: Admin = Depends(get_current_admin)
 ) -> None:

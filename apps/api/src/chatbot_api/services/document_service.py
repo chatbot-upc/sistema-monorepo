@@ -20,7 +20,7 @@ class DocumentService:
         source_type: DocumentSourceType | None = None,
         pagination: PageParams,
     ) -> Page[DocumentRead]:
-        rows = await self.repository.list_filtered(
+        rows = await self.repository.list_filtered_with_chunk_count(
             db,
             status=status,
             source_type=source_type,
@@ -31,11 +31,10 @@ class DocumentService:
             db, status=status, source_type=source_type
         )
 
-        items: list[DocumentRead] = []
-        for doc in rows:
-            chunks = await self.repository.chunk_count(db, doc.id)
-            item = DocumentRead.model_validate(doc)
-            items.append(item.model_copy(update={"chunk_count": chunks}))
+        items = [
+            DocumentRead.model_validate(doc).model_copy(update={"chunk_count": chunks})
+            for doc, chunks in rows
+        ]
 
         return Page(
             items=items,

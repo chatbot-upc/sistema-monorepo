@@ -36,16 +36,16 @@ async def get_intent(
     return result
 
 
-@router.post("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("")
 async def create_intent(_: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 5")
 
 
-@router.put("/{intent_id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.put("/{intent_id}")
 async def update_intent(intent_id: int, _: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 5")
 
 
-@router.delete("/{intent_id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.delete("/{intent_id}")
 async def delete_intent(intent_id: int, _: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 5")

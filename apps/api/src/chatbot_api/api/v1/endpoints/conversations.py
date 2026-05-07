@@ -61,27 +61,27 @@ async def list_messages(
     )
 
 
-@router.post("/{conversation_id}/takeover", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{conversation_id}/takeover")
 async def takeover(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
 
 
-@router.post("/{conversation_id}/release", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{conversation_id}/release")
 async def release(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
 
 
-@router.post("/{conversation_id}/close", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{conversation_id}/close")
 async def close(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
 
 
-@router.post("/{conversation_id}/reopen", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{conversation_id}/reopen")
 async def reopen(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
 
 
-@router.post("/{conversation_id}/messages", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{conversation_id}/messages")
 async def send_message(
     conversation_id: int, _: Admin = Depends(get_current_admin)
 ) -> None:

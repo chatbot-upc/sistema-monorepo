@@ -75,6 +75,16 @@ async def test_get_conversation_404(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
+async def test_get_document_404(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/documents/999999", headers=DEV_USER_HEADER)
+    assert response.status_code == 404
+
+
+async def test_get_intent_404(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/intents/999999", headers=DEV_USER_HEADER)
+    assert response.status_code == 404
+
+
 async def test_list_messages_paginated(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:

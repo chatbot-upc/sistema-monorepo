@@ -25,13 +25,13 @@ async def list_notifications(
     )
 
 
-@router.get("/templates", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.get("/templates")
 async def list_templates(_: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(
         status.HTTP_501_NOT_IMPLEMENTED, "Meta templates fetch en Fase 4"
     )
 
 
-@router.post("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("")
 async def create_notification(_: Admin = Depends(get_current_admin)) -> None:
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")

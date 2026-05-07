@@ -1,6 +1,12 @@
-"""Smoke tests: auth + correlation + webhook (no DB queries needed)."""
+"""Smoke tests: auth + correlation + webhook."""
 
+import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from chatbot_api.models import AdminRole
+
+from . import factories
 
 DEV_USER_HEADER = {"X-Dev-User": "dev@upc.edu.pe"}
 
@@ -13,6 +19,30 @@ async def test_unauth_returns_401(client: AsyncClient) -> None:
 async def test_unknown_admin_returns_401(client: AsyncClient) -> None:
     response = await client.get(
         "/api/v1/conversations", headers={"X-Dev-User": "ghost@x.com"}
+    )
+    assert response.status_code == 401
+
+
+async def test_malformed_email_returns_401(client: AsyncClient) -> None:
+    response = await client.get(
+        "/api/v1/conversations", headers={"X-Dev-User": "not-an-email"}
+    )
+    assert response.status_code == 401
+    assert "malformed" in response.json()["detail"].lower()
+
+
+async def test_inactive_admin_returns_401(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await factories.make_admin(
+        db_session,
+        email="inactive@upc.edu.pe",
+        name="Inactive",
+        role=AdminRole.admin,
+        active=False,
+    )
+    response = await client.get(
+        "/api/v1/conversations", headers={"X-Dev-User": "inactive@upc.edu.pe"}
     )
     assert response.status_code == 401
 
@@ -48,6 +78,49 @@ async def test_webhook_verify_no_token_configured(client: AsyncClient) -> None:
         },
     )
     assert response.status_code == 403
+
+
+async def test_webhook_verify_handshake_ok(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from chatbot_api.core.settings import get_settings
+
+    monkeypatch.setenv("META_VERIFY_TOKEN", "test-secret")
+    get_settings.cache_clear()
+    try:
+        response = await client.get(
+            "/webhooks/whatsapp",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "test-secret",
+                "hub.challenge": "challenge-123",
+            },
+        )
+        assert response.status_code == 200
+        assert response.text == "challenge-123"
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_webhook_verify_wrong_token(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from chatbot_api.core.settings import get_settings
+
+    monkeypatch.setenv("META_VERIFY_TOKEN", "test-secret")
+    get_settings.cache_clear()
+    try:
+        response = await client.get(
+            "/webhooks/whatsapp",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "WRONG",
+                "hub.challenge": "abc",
+            },
+        )
+        assert response.status_code == 403
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_webhook_post_returns_200(client: AsyncClient) -> None:

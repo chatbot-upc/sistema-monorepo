@@ -1,3 +1,5 @@
+import re
+
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,6 +7,8 @@ from chatbot_api.core.db import get_session
 from chatbot_api.core.settings import get_settings
 from chatbot_api.models import Admin
 from chatbot_api.services.admin_service import admin_service
+
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
 
 async def get_current_admin(
@@ -14,11 +18,12 @@ async def get_current_admin(
     settings = get_settings()
 
     if settings.env == "local":
-        email = request.headers.get("X-Dev-User")
-        if not email:
+        raw = request.headers.get("X-Dev-User")
+        email = raw.strip().lower() if raw else None
+        if not email or not _EMAIL_RE.match(email):
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED,
-                "missing X-Dev-User header (local env)",
+                "missing or malformed X-Dev-User header (expected email)",
             )
         admin = await admin_service.get_active_by_email(db, email)
         if admin is None:

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,18 +21,18 @@ class _DocUpdate(BaseModel):
 class DocumentRepository(BaseRepository[Document, _DocCreate, _DocUpdate]):
     def _apply_filters(
         self,
-        query: Select[tuple[Document]],
+        query: Select[Any],
         *,
         status: DocumentStatus | None,
         source_type: DocumentSourceType | None,
-    ) -> Select[tuple[Document]]:
+    ) -> Select[Any]:
         if status is not None:
             query = query.where(Document.status == status)
         if source_type is not None:
             query = query.where(Document.source_type == source_type)
         return query
 
-    async def list_filtered(
+    async def list_filtered_with_chunk_count(
         self,
         db: AsyncSession,
         *,
@@ -38,12 +40,18 @@ class DocumentRepository(BaseRepository[Document, _DocCreate, _DocUpdate]):
         source_type: DocumentSourceType | None = None,
         skip: int = 0,
         limit: int = 20,
-    ) -> list[Document]:
-        query: Select[tuple[Document]] = select(Document)
+    ) -> list[tuple[Document, int]]:
+        chunk_count_subq = (
+            select(func.count(DocumentChunk.id))
+            .where(DocumentChunk.document_id == Document.id)
+            .correlate(Document)
+            .scalar_subquery()
+        )
+        query = select(Document, chunk_count_subq.label("chunk_count"))
         query = self._apply_filters(query, status=status, source_type=source_type)
         query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
         result = await db.execute(query)
-        return list(result.scalars().all())
+        return [(row[0], int(row.chunk_count)) for row in result.all()]
 
     async def count_filtered(
         self,

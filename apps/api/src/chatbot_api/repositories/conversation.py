@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import Select, func, select
@@ -19,16 +20,22 @@ class _ConvUpdate(BaseModel):
     pass
 
 
+def _truncate(content: str | None, length: int = 80) -> str | None:
+    if content is None:
+        return None
+    return content if len(content) <= length else content[: length - 3] + "..."
+
+
 class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpdate]):
     def _apply_filters(
         self,
-        query: Select[tuple[Conversation]],
+        query: Select[Any],
         *,
         status: ConversationStatus | None,
         from_date: date | None,
         to_date: date | None,
         phone: str | None,
-    ) -> Select[tuple[Conversation]]:
+    ) -> Select[Any]:
         if status is not None:
             query = query.where(Conversation.status == status)
         if from_date is not None:
@@ -40,7 +47,7 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             query = query.where(Student.display_name.op("%")(phone))
         return query
 
-    async def list_filtered(
+    async def list_filtered_with_aggregates(
         self,
         db: AsyncSession,
         *,
@@ -50,14 +57,38 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         phone: str | None = None,
         skip: int = 0,
         limit: int = 20,
-    ) -> list[Conversation]:
-        query = select(Conversation).options(selectinload(Conversation.student))
+    ) -> list[tuple[Conversation, int, str | None]]:
+        """Single query: (Conversation, message_count, last_message_preview)."""
+        msg_count_subq = (
+            select(func.count(Message.id))
+            .where(Message.conversation_id == Conversation.id)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        last_msg_subq = (
+            select(Message.content)
+            .where(Message.conversation_id == Conversation.id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+
+        query = select(
+            Conversation,
+            msg_count_subq.label("message_count"),
+            last_msg_subq.label("last_message_content"),
+        ).options(selectinload(Conversation.student))
         query = self._apply_filters(
             query, status=status, from_date=from_date, to_date=to_date, phone=phone
         )
         query = query.order_by(Conversation.opened_at.desc()).offset(skip).limit(limit)
         result = await db.execute(query)
-        return list(result.scalars().unique().all())
+        rows = result.unique().all()
+        return [
+            (row[0], int(row.message_count), _truncate(row.last_message_content))
+            for row in rows
+        ]
 
     async def count_filtered(
         self,
@@ -75,26 +106,6 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         count_query = select(func.count()).select_from(query.subquery())
         result = await db.execute(count_query)
         return int(result.scalar_one())
-
-    async def count_messages(self, db: AsyncSession, conversation_id: int) -> int:
-        result = await db.execute(
-            select(func.count(Message.id)).where(Message.conversation_id == conversation_id)
-        )
-        return int(result.scalar_one())
-
-    async def last_message_preview(
-        self, db: AsyncSession, conversation_id: int
-    ) -> str | None:
-        result = await db.execute(
-            select(Message.content)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.desc())
-            .limit(1)
-        )
-        content = result.scalar_one_or_none()
-        if content is None:
-            return None
-        return content if len(content) <= 80 else content[:77] + "..."
 
     async def get_with_messages(
         self, db: AsyncSession, conversation_id: int

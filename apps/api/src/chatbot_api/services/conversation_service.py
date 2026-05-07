@@ -26,7 +26,7 @@ class ConversationService:
         phone: str | None = None,
         pagination: PageParams,
     ) -> Page[ConversationListItem]:
-        rows = await self.repository.list_filtered(
+        rows = await self.repository.list_filtered_with_aggregates(
             db,
             status=status,
             from_date=from_date,
@@ -39,22 +39,19 @@ class ConversationService:
             db, status=status, from_date=from_date, to_date=to_date, phone=phone
         )
 
-        items: list[ConversationListItem] = []
-        for conv in rows:
-            count = await self.repository.count_messages(db, conv.id)
-            preview = await self.repository.last_message_preview(db, conv.id)
-            items.append(
-                ConversationListItem(
-                    id=conv.id,
-                    student_phone=conv.student_phone,
-                    student_display_name=conv.student.display_name if conv.student else None,
-                    status=conv.status,
-                    opened_at=conv.opened_at,
-                    closed_at=conv.closed_at,
-                    message_count=count,
-                    last_message_preview=preview,
-                )
+        items = [
+            ConversationListItem(
+                id=conv.id,
+                student_phone=conv.student_phone,
+                student_display_name=conv.student.display_name if conv.student else None,
+                status=conv.status,
+                opened_at=conv.opened_at,
+                closed_at=conv.closed_at,
+                message_count=msg_count,
+                last_message_preview=preview,
             )
+            for conv, msg_count, preview in rows
+        ]
 
         return Page(
             items=items,
