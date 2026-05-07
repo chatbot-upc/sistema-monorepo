@@ -122,32 +122,40 @@ Admin → Next.js (Cognito JWT) → FastAPI → PostgreSQL
 ```
 chatbot-upc/
 ├── apps/
-│   ├── web/                    # Next.js (movido desde /web preservando historia)
+│   ├── web/                          # Next.js admin
 │   │   ├── src/
 │   │   ├── package.json
 │   │   └── ...
-│   └── api/                    # FastAPI
+│   └── api/                          # FastAPI + Celery worker
 │       ├── src/
 │       │   └── chatbot_api/
-│       │       ├── core/       # settings, db, logging, security
-│       │       ├── models/     # SQLAlchemy models
-│       │       ├── schemas/    # Pydantic schemas
-│       │       ├── routers/    # FastAPI routers
-│       │       ├── services/   # lógica de negocio
-│       │       ├── rag/        # pipeline LangChain
-│       │       ├── workers/    # tasks Celery
-│       │       └── prompts/    # system prompts versionados (v1/, v2/, ...)
+│       │       ├── api/              # HTTP layer (Fase 2)
+│       │       │   ├── dependencies.py    # get_current_admin
+│       │       │   ├── webhooks.py        # /webhooks/whatsapp (sin v1)
+│       │       │   └── v1/
+│       │       │       ├── router.py      # aggregator
+│       │       │       └── endpoints/     # auth, conversations, ...
+│       │       ├── core/             # settings, db, logging, security, lifespan
+│       │       ├── middlewares/      # correlation_id (Fase 2)
+│       │       ├── models/           # SQLAlchemy ORM (Fase 1)
+│       │       ├── repositories/     # data access — BaseRepository[Model, Create, Update] (Fase 2)
+│       │       ├── schemas/          # Pydantic shapes I/O (Fase 2)
+│       │       ├── services/         # business logic (Fase 2)
+│       │       ├── rag/              # LangChain pipeline (Fase 3)
+│       │       ├── workers/          # Celery tasks (Fase 4)
+│       │       └── prompts/          # system prompts versionados (Fase 3)
+│       ├── alembic/                  # migraciones (Fase 1)
 │       ├── tests/
-│       ├── alembic/            # migraciones
-│       ├── pyproject.toml      # uv
+│       ├── scripts/                  # seed.py, etc.
+│       ├── pyproject.toml            # uv
 │       └── Dockerfile
 ├── packages/
-│   └── shared-types/           # tipos TS generados desde openapi.json
-├── design/                     # Pencil .pen + previews HTML
-├── docs/                       # PLAN.md, ADRs, etc.
-├── infra/                      # IaC futura
-├── scrapping/                  # one-shot externo, NO se modifica
-├── docker-compose.yml          # postgres+pgvector + redis local
+│   └── shared-types/                 # tipos TS generados desde openapi.json
+├── design/                           # Pencil .pen + previews HTML
+├── docs/                             # PLAN.md, ADRs
+├── infra/                            # docker init.sql, Terraform/CDK futuro
+├── scrapping/                        # one-shot externo, NO runtime
+├── docker-compose.yml                # postgres+pgvector + redis local
 ├── pnpm-workspace.yaml
 ├── .env.example
 ├── .gitignore
@@ -155,11 +163,28 @@ chatbot-upc/
 └── README.md
 ```
 
+**Arquitectura por capas (Fase 2+):**
+
+```
+HTTP Request
+   ↓
+api/v1/endpoints/   ← routers thin (parse, HTTP codes)
+   ↓
+services/           ← business logic + Pydantic conversion
+   ↓
+repositories/       ← data access (queries SQLAlchemy)
+   ↓
+models/             ← ORM declarative
+```
+
 **Decisiones de estructura:**
 
 - `apps/api/src/chatbot_api/` (src layout) facilita el packaging y evita imports relativos confusos.
-- Worker Celery vive **dentro** de `apps/api/` como módulo (`workers/`), comparte modelos y settings con el API. Un solo Docker image, dos comandos de arranque.
-- `packages/shared-types/` se genera con `openapi-typescript` desde `openapi.json` del API. Sincroniza tipos entre Python y TS.
+- Patrón clean architecture (router → service → repository → model) según skill `fastapi-templates`.
+- `repositories/` con `BaseRepository[Model, Create, Update]` genérico para CRUD básico, extendido por dominio.
+- `services/` como clases con singleton al final de cada archivo.
+- Worker Celery vivirá dentro de `apps/api/workers/` como módulo (Fase 4), comparte modelos y settings con el API.
+- `packages/shared-types/` se genera con `openapi-typescript` desde `openapi.json` del API (Fase 5).
 - `scrapping/` se queda sin tocar (es one-shot, no parte del runtime).
 
 ---
