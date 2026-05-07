@@ -7,7 +7,7 @@ from chatbot_api.models import Admin
 from chatbot_api.models.enums import NotificationStatus
 from chatbot_api.schemas.notification import NotificationRead
 from chatbot_api.schemas.pagination import Page, PageParams
-from chatbot_api.services.notification_service import notification_service
+from chatbot_api.services import notification_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 

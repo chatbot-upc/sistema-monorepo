@@ -70,7 +70,7 @@ async def test_correlation_id_propagated(client: AsyncClient) -> None:
 
 async def test_webhook_verify_no_token_configured(client: AsyncClient) -> None:
     response = await client.get(
-        "/webhooks/whatsapp",
+        "/api/webhooks/whatsapp",
         params={
             "hub.mode": "subscribe",
             "hub.verify_token": "any",
@@ -89,7 +89,7 @@ async def test_webhook_verify_handshake_ok(
     get_settings.cache_clear()
     try:
         response = await client.get(
-            "/webhooks/whatsapp",
+            "/api/webhooks/whatsapp",
             params={
                 "hub.mode": "subscribe",
                 "hub.verify_token": "test-secret",
@@ -111,7 +111,7 @@ async def test_webhook_verify_wrong_token(
     get_settings.cache_clear()
     try:
         response = await client.get(
-            "/webhooks/whatsapp",
+            "/api/webhooks/whatsapp",
             params={
                 "hub.mode": "subscribe",
                 "hub.verify_token": "WRONG",
@@ -125,7 +125,7 @@ async def test_webhook_verify_wrong_token(
 
 async def test_webhook_post_returns_200(client: AsyncClient) -> None:
     response = await client.post(
-        "/webhooks/whatsapp", json={"object": "whatsapp_business_account"}
+        "/api/webhooks/whatsapp", json={"object": "whatsapp_business_account"}
     )
     assert response.status_code == 200
     assert response.json()["status"] == "received"

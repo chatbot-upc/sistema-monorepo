@@ -7,7 +7,7 @@ from chatbot_api.models import Admin
 from chatbot_api.models.enums import DocumentSourceType, DocumentStatus
 from chatbot_api.schemas.document import DocumentRead
 from chatbot_api.schemas.pagination import Page, PageParams
-from chatbot_api.services.document_service import document_service
+from chatbot_api.services import document_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -35,10 +35,7 @@ async def get_document(
     _: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_session),
 ) -> DocumentRead:
-    result = await document_service.get_detail(db, document_id)
-    if result is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
-    return result
+    return await document_service.get_detail(db, document_id)
 
 
 @router.post("")

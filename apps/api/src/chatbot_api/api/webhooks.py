@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse
 
 from chatbot_api.core.settings import get_settings
 
-router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 log = structlog.get_logger()
 
 

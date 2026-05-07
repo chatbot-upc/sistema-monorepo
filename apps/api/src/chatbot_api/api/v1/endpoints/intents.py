@@ -6,7 +6,7 @@ from chatbot_api.core.db import get_session
 from chatbot_api.models import Admin
 from chatbot_api.schemas.intent import IntentRead
 from chatbot_api.schemas.pagination import Page, PageParams
-from chatbot_api.services.intent_service import intent_service
+from chatbot_api.services import intent_service
 
 router = APIRouter(prefix="/intents", tags=["intents"])
 
@@ -30,10 +30,7 @@ async def get_intent(
     _: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_session),
 ) -> IntentRead:
-    result = await intent_service.get_detail(db, intent_id)
-    if result is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "intent not found")
-    return result
+    return await intent_service.get_detail(db, intent_id)
 
 
 @router.post("")

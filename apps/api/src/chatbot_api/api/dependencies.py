@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chatbot_api.core.db import get_session
 from chatbot_api.core.settings import get_settings
 from chatbot_api.models import Admin
-from chatbot_api.services.admin_service import admin_service
+from chatbot_api.repositories.admin import admin_repository
 
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
@@ -25,7 +25,7 @@ async def get_current_admin(
                 status.HTTP_401_UNAUTHORIZED,
                 "missing or malformed X-Dev-User header (expected email)",
             )
-        admin = await admin_service.get_active_by_email(db, email)
+        admin = await admin_repository.get_active_by_email(db, email)
         if admin is None:
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED,

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chatbot_api.api.dependencies import get_current_admin
 from chatbot_api.core.db import get_session
 from chatbot_api.models import Admin
-from chatbot_api.services.report_service import report_service
+from chatbot_api.services import report_service
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 

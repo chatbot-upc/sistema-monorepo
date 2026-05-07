@@ -10,7 +10,7 @@ from chatbot_api.models.enums import ConversationStatus
 from chatbot_api.schemas.conversation import ConversationDetail, ConversationListItem
 from chatbot_api.schemas.message import MessageRead
 from chatbot_api.schemas.pagination import Page, PageParams
-from chatbot_api.services.conversation_service import conversation_service
+from chatbot_api.services import conversation_service
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -42,10 +42,7 @@ async def get_conversation(
     _: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_session),
 ) -> ConversationDetail:
-    result = await conversation_service.get_detail(db, conversation_id)
-    if result is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found")
-    return result
+    return await conversation_service.get_detail(db, conversation_id)
 
 
 @router.get("/{conversation_id}/messages", response_model=Page[MessageRead])
