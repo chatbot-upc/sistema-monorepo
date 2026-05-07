@@ -17,9 +17,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-
     op.execute(
         "CREATE INDEX ix_document_chunks_embedding_hnsw "
         "ON document_chunks USING hnsw (embedding vector_cosine_ops) "

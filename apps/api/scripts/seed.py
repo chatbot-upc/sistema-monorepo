@@ -8,11 +8,11 @@ import asyncio
 
 from sqlalchemy import text
 
-from chatbot_api.core.db import AsyncSessionLocal
+from chatbot_api.core.db import get_session_factory
 
 
 async def seed() -> None:
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         await session.execute(
             text(
                 """

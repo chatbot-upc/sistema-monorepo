@@ -1,7 +1,7 @@
 """initial schema
 
 Revision ID: 2891c4218398
-Revises: 
+Revises: 0000_init_extensions
 Create Date: 2026-05-06 15:28:58.755965
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '2891c4218398'
-down_revision: str | Sequence[str] | None = None
+down_revision: str | Sequence[str] | None = '0000_init_extensions'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
