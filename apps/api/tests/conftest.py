@@ -6,6 +6,7 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import NullPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
@@ -41,3 +42,28 @@ async def db_session(postgres_url: str) -> AsyncIterator[AsyncSession]:
             yield session
         await trans.rollback()
     await eng.dispose()
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """HTTP client wired to the FastAPI app, sharing the test's db_session.
+
+    Overrides `get_session` so route handlers operate inside the test transaction.
+    Data inserted via factories is visible to API requests; the rollback at the
+    end of the test cleans it up.
+    """
+    from chatbot_api.core.db import get_session
+    from chatbot_api.main import app
+
+    async def _override_session() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    app.dependency_overrides[get_session] = _override_session
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_session, None)

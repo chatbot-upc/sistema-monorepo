@@ -1,12 +1,10 @@
-from fastapi.testclient import TestClient
-
-from chatbot_api.main import app
+from httpx import AsyncClient
 
 
-def test_health() -> None:
-    client = TestClient(app)
-    response = client.get("/health")
+async def test_health(client: AsyncClient) -> None:
+    response = await client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
+    assert body["db"] == "ok"
     assert "env" in body

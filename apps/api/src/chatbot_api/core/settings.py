@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
 
+    cognito_user_pool_id: str = ""
+    cognito_client_id: str = ""
+    cognito_region: str = "us-east-1"
+
+    meta_verify_token: str = ""
+    meta_app_secret: str = ""
+    meta_phone_number_id: str = ""
+    meta_access_token: str = ""
+    meta_graph_api_version: str = "v21.0"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, value: object) -> object:
