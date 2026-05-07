@@ -74,5 +74,9 @@ class DocumentRepository(BaseRepository[Document, _DocCreate, _DocUpdate]):
         )
         return int(result.scalar_one())
 
+    async def get_by_sha256(self, db: AsyncSession, sha256: str) -> Document | None:
+        result = await db.execute(select(Document).where(Document.sha256 == sha256))
+        return result.scalars().first()
+
 
 document_repository = DocumentRepository(Document)

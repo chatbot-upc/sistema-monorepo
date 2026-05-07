@@ -138,9 +138,10 @@ async def test_takeover_not_implemented(client: AsyncClient) -> None:
     assert response.status_code == 501
 
 
-async def test_upload_document_not_implemented(client: AsyncClient) -> None:
+async def test_upload_document_requires_file(client: AsyncClient) -> None:
+    """POST /documents está implementado (Fase 3) — sin file devuelve 422."""
     response = await client.post("/api/v1/documents", headers=DEV_USER_HEADER)
-    assert response.status_code == 501
+    assert response.status_code == 422
 
 
 async def test_create_intent_not_implemented(client: AsyncClient) -> None:

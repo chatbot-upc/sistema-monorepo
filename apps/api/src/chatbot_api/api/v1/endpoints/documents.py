@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.api.dependencies import get_current_admin
@@ -38,13 +38,31 @@ async def get_document(
     return await document_service.get_detail(db, document_id)
 
 
-@router.post("")
-async def upload(_: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 3")
+@router.post(
+    "",
+    response_model=DocumentRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload(
+    file: UploadFile = File(...),
+    source_type: DocumentSourceType = Form(DocumentSourceType.upload),
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> DocumentRead:
+    content = await file.read()
+    return await document_service.upload_document(
+        db,
+        filename=file.filename or "untitled.pdf",
+        content=content,
+        source_type=source_type,
+        uploaded_by=admin.id,
+    )
 
 
-@router.delete("/{document_id}")
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
-    document_id: int, _: Admin = Depends(get_current_admin)
+    document_id: int,
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
 ) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 3")
+    await document_service.delete_document(db, document_id)

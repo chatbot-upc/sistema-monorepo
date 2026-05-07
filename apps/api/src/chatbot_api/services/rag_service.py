@@ -1,0 +1,57 @@
+"""RAG agent service. Agente LangChain construido una sola vez al importar.
+
+Estado compartido (`_agent`) a nivel de módulo. Python garantiza que el módulo se
+inicializa una sola vez por proceso (singleton de hecho). Sin clases, sin self.
+"""
+
+from pathlib import Path
+from typing import Any
+
+from langchain.agents import create_agent
+
+from chatbot_api.core.settings import get_settings
+from chatbot_api.rag.tools import escalate_to_human, search_knowledge_base
+
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "v1"
+_settings = get_settings()
+_system_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(encoding="utf-8")
+
+_agent = create_agent(
+    model=f"openai:{_settings.openai_model}",
+    tools=[search_knowledge_base, escalate_to_human],
+    system_prompt=_system_prompt,
+)
+
+
+async def answer(*, user_text: str, correlation_id: str) -> dict[str, Any]:
+    """Invoca el agente con el mensaje del usuario y devuelve respuesta + metadata.
+
+    Returns:
+        {
+            "text": str,           # respuesta final al usuario
+            "tool_calls": list,    # herramientas invocadas (search_kb, escalate)
+            "input_tokens": int|None,
+            "output_tokens": int|None,
+        }
+    """
+    result = await _agent.ainvoke(
+        {"messages": [{"role": "user", "content": user_text}]},
+        config={
+            "recursion_limit": 10,
+            "metadata": {"correlation_id": correlation_id},
+        },
+    )
+
+    last = result["messages"][-1]
+    tool_calls: list[dict[str, Any]] = []
+    for msg in result["messages"]:
+        for tc in getattr(msg, "tool_calls", None) or []:
+            tool_calls.append({"name": tc.get("name"), "args": tc.get("args")})
+
+    usage = result.get("usage_metadata") or {}
+    return {
+        "text": getattr(last, "content", str(last)),
+        "tool_calls": tool_calls,
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+    }
