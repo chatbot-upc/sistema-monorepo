@@ -1,11 +1,45 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { useState, useTransition } from "react";
+
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
+import { Input } from "@/components/ui/Input";
+
 import { ForgotPasswordButton } from "./_components/ForgotPasswordButton";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const callbackUrl = params.get("callbackUrl") ?? "/dashboard";
+
+  const [email, setEmail] = useState("dev@upc.edu.pe");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const res = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+      if (!res || res.error) {
+        setError("Credenciales inválidas");
+        return;
+      }
+      router.push(callbackUrl);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="min-h-screen bg-bg-2 flex items-center justify-center p-6">
       <div className="flex flex-col items-center gap-6 w-full max-w-[440px]">
@@ -30,26 +64,53 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form className="flex flex-col gap-4 px-12">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-12">
             <Field label="Email institucional">
               <Input
                 type="email"
                 placeholder="admin@upc.edu.pe"
-                defaultValue="admin@upc.edu.pe"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
               />
             </Field>
             <Field label="Contraseña">
-              <Input type="password" placeholder="••••••••" />
+              <Input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
             </Field>
+            {error && (
+              <p className="text-sm text-red-600" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="flex flex-col gap-3 pt-3">
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                className="w-full justify-center"
+                disabled={isPending}
+              >
+                {isPending ? "Ingresando..." : "Iniciar sesión"}
+              </Button>
+              <ForgotPasswordButton />
+            </div>
           </form>
 
-          <div className="flex flex-col gap-3 px-12 pb-12">
-            <Link href="/dashboard">
-              <Button variant="primary" size="lg" className="w-full justify-center">
-                Iniciar sesión
-              </Button>
+          <div className="px-12 pb-12 text-center">
+            <Link
+              href="/dashboard"
+              className="text-xs font-mono text-muted-2 hover:text-muted"
+            >
+              {/* placeholder link removed once auth wired */}
             </Link>
-            <ForgotPasswordButton />
           </div>
         </Card>
 
