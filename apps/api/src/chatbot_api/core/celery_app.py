@@ -10,7 +10,10 @@ celery_app = Celery(
     "chatbot_api",
     broker=_settings.celery_broker_url,
     backend=_settings.celery_result_backend,
-    include=["chatbot_api.workers.ingest"],
+    include=[
+        "chatbot_api.workers.ingest",
+        "chatbot_api.workers.conversation",
+    ],
 )
 
 celery_app.conf.update(

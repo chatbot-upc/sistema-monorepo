@@ -1,10 +1,18 @@
-from typing import Annotated, Any
+from typing import Annotated
+from uuid import uuid4
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
+from pydantic import ValidationError
 
 from chatbot_api.core.settings import get_settings
+from chatbot_api.schemas.whatsapp import WhatsAppWebhookPayload
+from chatbot_api.services.whatsapp_webhook_service import (
+    extract_messages,
+    verify_signature,
+)
+from chatbot_api.workers.conversation import process_incoming_message
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 log = structlog.get_logger()
@@ -27,6 +35,46 @@ async def whatsapp_verify(
 
 
 @router.post("/whatsapp")
-async def whatsapp_event(payload: dict[str, Any]) -> dict[str, str]:
-    log.info("whatsapp_event_received", payload_keys=list(payload.keys()))
-    return {"status": "received"}
+async def whatsapp_event(
+    request: Request,
+    x_hub_signature_256: Annotated[str | None, Header(alias="X-Hub-Signature-256")] = None,
+    x_correlation_id: Annotated[str | None, Header(alias="X-Correlation-Id")] = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    raw_body = await request.body()
+
+    if settings.meta_app_secret:
+        if not verify_signature(
+            raw_body=raw_body,
+            signature_header=x_hub_signature_256,
+            app_secret=settings.meta_app_secret,
+        ):
+            log.warning("whatsapp_invalid_signature")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid signature")
+    elif settings.env != "local":
+        log.error("whatsapp_app_secret_missing", env=settings.env)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "meta_app_secret not configured"
+        )
+
+    try:
+        payload = WhatsAppWebhookPayload.model_validate_json(raw_body)
+    except ValidationError as exc:
+        log.warning("whatsapp_invalid_payload", errors=exc.errors())
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid payload") from exc
+
+    messages = extract_messages(payload)
+    correlation_id = x_correlation_id or uuid4().hex
+
+    queued = 0
+    for parsed in messages:
+        process_incoming_message.delay(parsed.model_dump(), correlation_id)
+        queued += 1
+
+    log.info(
+        "whatsapp_event_received",
+        queued=queued,
+        total_messages_in_payload=len(messages),
+        correlation_id=correlation_id,
+    )
+    return {"status": "received", "queued": queued}

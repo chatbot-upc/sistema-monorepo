@@ -117,5 +117,33 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         )
         return result.scalars().first()
 
+    async def get_or_create_open(
+        self, db: AsyncSession, student_phone: str
+    ) -> tuple[Conversation, bool]:
+        """Return latest open/takeover conversation for phone or create a fresh one.
+
+        Returns (conversation, created) where `created` is True only on first contact.
+        """
+        result = await db.execute(
+            select(Conversation)
+            .where(
+                Conversation.student_phone == student_phone,
+                Conversation.status.in_(
+                    [ConversationStatus.abierta, ConversationStatus.takeover]
+                ),
+            )
+            .order_by(Conversation.opened_at.desc())
+            .limit(1)
+        )
+        existing = result.scalars().first()
+        if existing is not None:
+            return existing, False
+        conv = Conversation(
+            student_phone=student_phone, status=ConversationStatus.abierta
+        )
+        db.add(conv)
+        await db.flush()
+        return conv, True
+
 
 conversation_repository = ConversationRepository(Conversation)
