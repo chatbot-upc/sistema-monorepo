@@ -58,3 +58,14 @@ export interface DocumentSummary {
 export async function fetchDocumentsSummary(): Promise<DocumentSummary> {
   return apiFetch<DocumentSummary>("/api/v1/documents/summary");
 }
+
+export async function uploadDocument(form: FormData): Promise<DocumentRead> {
+  return apiFetch<DocumentRead>("/api/v1/documents", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function deleteDocument(id: number): Promise<void> {
+  return apiFetch<void>(`/api/v1/documents/${id}`, { method: "DELETE" });
+}

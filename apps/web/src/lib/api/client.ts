@@ -39,18 +39,28 @@ export async function apiFetch<T>(path: string, init: ApiRequest = {}): Promise<
       url.searchParams.set(key, String(value));
     }
   }
+
+  // When body is FormData the runtime must set Content-Type with its boundary;
+  // hard-coding application/json would break multipart uploads (SW-21).
+  const isFormData =
+    typeof FormData !== "undefined" && rest.body instanceof FormData;
+  const baseHeaders: Record<string, string> = { "X-Dev-User": DEV_USER };
+  if (!isFormData) {
+    baseHeaders["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(url, {
     ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Dev-User": DEV_USER,
-      ...headers,
-    },
+    headers: { ...baseHeaders, ...headers },
     cache: rest.cache ?? "no-store",
   });
   if (!response.ok) {
     const body = await response.text();
     throw new ApiError(response.status, path, body);
+  }
+  // 204 No Content (e.g. DELETE /documents/{id}) has no body to parse.
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return undefined as T;
   }
   return (await response.json()) as T;
 }

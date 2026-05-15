@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/ToastProvider";
 import type { DocumentRead, DocumentSummary } from "@/lib/api/documents";
+import { deleteDocumentAction } from "../_actions/documents";
 import { DocumentsStats } from "./DocumentsStats";
 import { DocumentsToolbar } from "./DocumentsToolbar";
 import { DocumentsTable } from "./DocumentsTable";
@@ -84,14 +85,19 @@ export function DocumentsView({
         open={!!confirmDelete}
         onOpenChange={(v) => !v && setConfirmDelete(null)}
         title={`¿Eliminar ${confirmDelete?.title ?? "este documento"}?`}
-        description="El documento dejará de aparecer en las respuestas RAG. Esta acción no se puede deshacer."
+        description="El documento y sus fragmentos dejarán de aparecer en las respuestas RAG. Esta acción no se puede deshacer."
         confirmLabel="Eliminar"
         variant="destructive"
         onConfirm={async () => {
           if (!confirmDelete) return;
-          toast.info("Eliminación simulada", {
-            description: "El delete real llega en HU14 (Sprint 4).",
-          });
+          const res = await deleteDocumentAction(confirmDelete.id);
+          if (res.ok) {
+            toast.success("Documento eliminado", {
+              description: `${confirmDelete.title} y sus fragmentos fueron borrados.`,
+            });
+          } else {
+            toast.error("No se pudo eliminar", { description: res.error });
+          }
           setConfirmDelete(null);
         }}
       />
