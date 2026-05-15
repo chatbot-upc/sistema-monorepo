@@ -8,6 +8,7 @@ import {
   FileText,
   Tag,
   BarChart3,
+  Activity,
   ChevronUp,
   User,
   LogOut,
@@ -35,6 +36,7 @@ const NAV: NavItem[] = [
   { href: "/documents", label: "Documentos", icon: FileText },
   { href: "/intents", label: "Intenciones", icon: Tag },
   { href: "/reports", label: "Reportes", icon: BarChart3 },
+  { href: "/monitoring", label: "Monitoreo", icon: Activity },
 ];
 
 export function Sidebar() {

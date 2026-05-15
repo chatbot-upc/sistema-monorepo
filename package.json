@@ -7,6 +7,7 @@
     "dev:web": "pnpm --filter web dev",
     "dev:api": "cd apps/api && uv run uvicorn chatbot_api.main:app --reload --port 8000",
     "dev:worker": "cd apps/api && uv run celery -A chatbot_api.core.celery_app worker --pool=solo --loglevel=info",
+    "dev:flower": "cd apps/api && uv run celery -A chatbot_api.core.celery_app flower --port=5555 --address=127.0.0.1",
     "build:web": "pnpm --filter web build",
     "lint:web": "pnpm --filter web lint",
     "test:api": "cd apps/api && uv run pytest",

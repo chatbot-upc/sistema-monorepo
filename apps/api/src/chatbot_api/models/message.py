@@ -41,6 +41,9 @@ class Message(IdPk, Base):
         unique=True,
         nullable=True,
     )
+    intent_used_fallback: Mapped[bool | None] = mapped_column(
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,

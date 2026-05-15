@@ -92,6 +92,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
             intent_result = await intent_classifier_service.classify(
                 db=db, text=parsed.text
             )
+            inbound.intent_used_fallback = bool(intent_result["used_fallback"])
             if intent_result["intent_id"] is not None:
                 inbound.intent_id = intent_result["intent_id"]
                 db.add(
@@ -101,7 +102,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                         confidence=float(intent_result["confidence"]),
                     )
                 )
-                await db.commit()
+            await db.commit()
             log.info(
                 "intent_classified",
                 correlation_id=correlation_id,

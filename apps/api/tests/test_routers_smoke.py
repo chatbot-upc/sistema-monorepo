@@ -123,12 +123,23 @@ async def test_webhook_verify_wrong_token(
         get_settings.cache_clear()
 
 
-async def test_webhook_post_returns_200(client: AsyncClient) -> None:
-    response = await client.post(
-        "/api/webhooks/whatsapp", json={"object": "whatsapp_business_account"}
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "received"
+async def test_webhook_post_returns_200(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In env=local with empty META_APP_SECRET the dev-bypass accepts unsigned POSTs."""
+    from chatbot_api.core.settings import get_settings
+
+    monkeypatch.setenv("META_APP_SECRET", "")
+    monkeypatch.setenv("ENV", "local")
+    get_settings.cache_clear()
+    try:
+        response = await client.post(
+            "/api/webhooks/whatsapp", json={"object": "whatsapp_business_account"}
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "received"
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_takeover_not_implemented(client: AsyncClient) -> None:
