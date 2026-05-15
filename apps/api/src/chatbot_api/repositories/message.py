@@ -71,5 +71,33 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         await db.flush()
         return msg
 
+    async def create_bot(
+        self,
+        db: AsyncSession,
+        *,
+        conversation_id: int,
+        content: str,
+        retrieved_chunks: list[dict[str, object]] | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        latency_ms: int | None = None,
+        model_used: str | None = None,
+        meta_message_id: str | None = None,
+    ) -> Message:
+        msg = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.bot,
+            content=content,
+            retrieved_chunks=retrieved_chunks or [],
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
+            model_used=model_used,
+            meta_message_id=meta_message_id,
+        )
+        db.add(msg)
+        await db.flush()
+        return msg
+
 
 message_repository = MessageRepository(Message)

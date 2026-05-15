@@ -1,26 +1,40 @@
-"""RAG agent service. Agente LangChain construido una sola vez al importar.
+"""RAG agent service. Agent built lazily on first use.
 
-Estado compartido (`_agent`) a nivel de módulo. Python garantiza que el módulo se
-inicializa una sola vez por proceso (singleton de hecho). Sin clases, sin self.
+Eager build at import time crashes tests that don't supply OPENAI_API_KEY (e.g.,
+worker-flow tests that mock `answer`). We defer to the first `answer()` call so
+imports stay cheap.
 """
 
 from pathlib import Path
 from typing import Any
 
 from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from chatbot_api.core.settings import get_settings
 from chatbot_api.rag.tools import escalate_to_human, search_knowledge_base
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "v1"
-_settings = get_settings()
-_system_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(encoding="utf-8")
 
-_agent = create_agent(
-    model=f"openai:{_settings.openai_model}",
-    tools=[search_knowledge_base, escalate_to_human],
-    system_prompt=_system_prompt,
-)
+_agent: Any = None
+
+
+def _get_agent() -> Any:
+    global _agent
+    if _agent is None:
+        settings = get_settings()
+        chat = ChatOpenAI(
+            model=settings.openai_model,
+            api_key=SecretStr(settings.openai_api_key),
+        )
+        system_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(encoding="utf-8")
+        _agent = create_agent(
+            model=chat,
+            tools=[escalate_to_human, search_knowledge_base],
+            system_prompt=system_prompt,
+        )
+    return _agent
 
 
 async def answer(*, user_text: str, correlation_id: str) -> dict[str, Any]:
@@ -34,7 +48,7 @@ async def answer(*, user_text: str, correlation_id: str) -> dict[str, Any]:
             "output_tokens": int|None,
         }
     """
-    result = await _agent.ainvoke(
+    result = await _get_agent().ainvoke(
         {"messages": [{"role": "user", "content": user_text}]},
         config={
             "recursion_limit": 10,

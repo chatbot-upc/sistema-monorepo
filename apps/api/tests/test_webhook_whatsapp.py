@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -184,8 +184,16 @@ async def test_worker_idempotent_on_duplicate_meta_id(
         timestamp="1700000000",
     ).model_dump()
 
-    await _process_async(parsed, "corr-1")
-    await _process_async(parsed, "corr-2")
+    fake_answer = AsyncMock(return_value={"text": "ok", "tool_calls": []})
+    fake_send = AsyncMock(return_value="wamid.bot.dup")
+    with (
+        patch("chatbot_api.workers.conversation.rag_service.answer", fake_answer),
+        patch(
+            "chatbot_api.workers.conversation.whatsapp_service.send_message", fake_send
+        ),
+    ):
+        await _process_async(parsed, "corr-1")
+        await _process_async(parsed, "corr-2")
 
     # Read with a fresh session — worker commits to its own engine.
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
