@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     cognito_client_id: str = ""
     cognito_region: str = "us-east-1"
 
+    firebase_project_id: str = ""
+    firebase_client_email: str = ""
+    firebase_private_key: str = ""
+    firebase_private_key_id: str = ""
+
     meta_verify_token: str = ""
     meta_app_secret: str = ""
     meta_phone_number_id: str = ""

@@ -19,6 +19,10 @@ declare module "next-auth" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Trust the host of the incoming request (works behind ngrok, vercel preview,
+  // reverse proxies). Auth.js then derives the callback URL from req.nextUrl
+  // instead of hardcoding AUTH_URL.
+  trustHost: true,
   providers: [
     Credentials({
       name: "UPC Cognito",

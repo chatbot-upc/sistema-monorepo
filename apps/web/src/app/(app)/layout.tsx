@@ -1,6 +1,8 @@
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Topbar } from "@/components/shell/Topbar";
 
+import { FcmRegisterClient } from "./_components/FcmRegisterClient";
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-bg-2 p-4 gap-4">
@@ -9,6 +11,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Topbar />
         {children}
       </main>
+      <FcmRegisterClient />
     </div>
   );
 }

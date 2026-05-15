@@ -1,4 +1,5 @@
 from .admin import Admin
+from .admin_device import AdminDevice
 from .base import Base
 from .conversation import Conversation
 from .conversation_intent import ConversationIntent
@@ -21,6 +22,7 @@ from .student import Student
 
 __all__ = [
     "Admin",
+    "AdminDevice",
     "AdminRole",
     "Base",
     "Conversation",

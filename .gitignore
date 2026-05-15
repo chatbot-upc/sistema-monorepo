@@ -43,6 +43,11 @@ logs/
 apps/api/uploads/
 apps/api/.cache/
 
+# Firebase / secrets
+firebase-admin-key.json
+firebase-admin-key*.json
+**/.secrets/
+
 # Docker
 docker-compose.override.yml
 
