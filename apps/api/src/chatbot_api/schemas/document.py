@@ -20,3 +20,14 @@ class DocumentRead(BaseModel):
     indexed_at: datetime | None
     created_at: datetime
     chunk_count: int = 0
+
+
+class DocumentSummary(BaseModel):
+    """Aggregate counts across every document for the admin dashboard."""
+
+    total: int
+    total_chunks: int
+    indexed: int
+    indexing: int
+    pending: int
+    error: int

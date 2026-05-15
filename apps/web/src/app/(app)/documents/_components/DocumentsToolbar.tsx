@@ -3,35 +3,35 @@
 import { Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Select, type SelectOption } from "@/components/ui/Select";
-import type { DocStatus, DocType } from "./useDocumentFilters";
+import type { DocumentSourceType, DocumentStatus } from "@/lib/api/documents";
 
-const TYPE_OPTIONS: SelectOption<DocType>[] = [
-  { value: "PDF", label: "PDF" },
-  { value: "MD", label: "Markdown" },
-  { value: "TXT", label: "Texto" },
+const SOURCE_OPTIONS: SelectOption<DocumentSourceType>[] = [
+  { value: "upload", label: "Subido" },
+  { value: "scraped", label: "Scrapeado" },
+  { value: "link", label: "Enlace" },
 ];
 
-const STATUS_OPTIONS: SelectOption<DocStatus>[] = [
+const STATUS_OPTIONS: SelectOption<DocumentStatus>[] = [
   { value: "indexed", label: "Indexado" },
   { value: "indexing", label: "Procesando" },
-  { value: "draft", label: "Borrador" },
+  { value: "pending", label: "Pendiente" },
   { value: "error", label: "Error" },
 ];
 
 interface DocumentsToolbarProps {
   search: string;
   onSearch: (v: string) => void;
-  typeFilter: DocType[];
-  onTypeFilter: (v: DocType[]) => void;
-  statusFilter: DocStatus[];
-  onStatusFilter: (v: DocStatus[]) => void;
+  sourceFilter: DocumentSourceType[];
+  onSourceFilter: (v: DocumentSourceType[]) => void;
+  statusFilter: DocumentStatus[];
+  onStatusFilter: (v: DocumentStatus[]) => void;
 }
 
 export function DocumentsToolbar({
   search,
   onSearch,
-  typeFilter,
-  onTypeFilter,
+  sourceFilter,
+  onSourceFilter,
   statusFilter,
   onStatusFilter,
 }: DocumentsToolbarProps) {
@@ -52,10 +52,10 @@ export function DocumentsToolbar({
       </div>
       <Select
         multi
-        options={TYPE_OPTIONS}
-        value={typeFilter}
-        onChange={onTypeFilter}
-        label="Tipo"
+        options={SOURCE_OPTIONS}
+        value={sourceFilter}
+        onChange={onSourceFilter}
+        label="Fuente"
       />
       <Select
         multi

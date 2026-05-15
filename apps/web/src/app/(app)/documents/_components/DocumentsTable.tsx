@@ -7,44 +7,44 @@ import {
   RefreshCw,
   Download,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { IconButton } from "@/components/ui/IconButton";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/ToastProvider";
-import { reindexDocument, type Document } from "@/lib/mock";
-import type { DocStatus } from "./useDocumentFilters";
+import type { DocumentRead, DocumentStatus } from "@/lib/api/documents";
 
-const STATUS_LABEL: Record<DocStatus, string> = {
+const STATUS_LABEL: Record<DocumentStatus, string> = {
   indexed: "Indexado",
   indexing: "Procesando",
-  draft: "Borrador",
+  pending: "Pendiente",
   error: "Error",
 };
 
 const STATUS_TONE: Record<
-  DocStatus,
+  DocumentStatus,
   "active" | "pending" | "closed" | "escalated"
 > = {
   indexed: "active",
   indexing: "pending",
-  draft: "closed",
+  pending: "closed",
   error: "escalated",
 };
 
 interface DocumentsTableProps {
-  rows: Document[];
-  onDelete: (doc: Document) => void;
+  rows: DocumentRead[];
+  onDelete: (doc: DocumentRead) => void;
 }
 
 export function DocumentsTable({ rows, onDelete }: DocumentsTableProps) {
   return (
     <Card variant="flush">
-      <div className="grid grid-cols-[1fr_100px_120px_140px_140px_60px] gap-4 px-6 py-4 bg-surface-2 font-mono text-[10px] uppercase tracking-[0.6px] text-muted font-semibold">
+      <div className="grid grid-cols-[1fr_110px_100px_140px_140px_60px] gap-4 px-6 py-4 bg-surface-2 font-mono text-[10px] uppercase tracking-[0.6px] text-muted font-semibold">
         <span>Nombre</span>
-        <span>Tipo</span>
-        <span>Tamaño</span>
+        <span>Fuente</span>
+        <span>Chunks</span>
         <span>Estado</span>
         <span>Indexado</span>
         <span></span>
@@ -61,41 +61,63 @@ export function DocumentsTable({ rows, onDelete }: DocumentsTableProps) {
   );
 }
 
+function formatIndexedAt(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("es-PE", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
 function DocumentRow({
   doc,
   onDelete,
 }: {
-  doc: Document;
+  doc: DocumentRead;
   onDelete: () => void;
 }) {
   const { toast } = useToast();
   return (
-    <div className="grid grid-cols-[1fr_100px_120px_140px_140px_60px] gap-4 px-6 py-4 items-center hover:bg-surface-2 transition-colors border-t border-line">
+    <div className="grid grid-cols-[1fr_110px_100px_140px_140px_60px] gap-4 px-6 py-4 items-center hover:bg-surface-2 transition-colors border-t border-line">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-9 h-9 rounded-xl bg-blue-soft text-blue flex items-center justify-center shrink-0">
           <FileText size={16} strokeWidth={2} />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold truncate">{doc.name}</div>
-          <div className="font-mono text-[10px] text-muted">
-            {doc.chunks > 0 ? `${doc.chunks} chunks` : "—"}
-          </div>
+          <div className="text-sm font-semibold truncate">{doc.title}</div>
+          {doc.status === "error" && doc.error_message ? (
+            <div
+              className="flex items-center gap-1 text-[11px] text-danger truncate"
+              title={doc.error_message}
+            >
+              <AlertTriangle size={11} strokeWidth={2} />
+              <span className="truncate">{doc.error_message}</span>
+            </div>
+          ) : (
+            <div className="font-mono text-[10px] text-muted">
+              v{doc.version} · sha256:{doc.sha256.slice(0, 7)}
+            </div>
+          )}
         </div>
       </div>
       <span className="font-mono text-xs font-semibold uppercase">
-        {doc.type}
+        {doc.source_type}
       </span>
-      <span className="font-mono text-xs text-muted">{doc.size}</span>
+      <span className="font-mono text-xs text-muted tabular">
+        {doc.chunk_count}
+      </span>
       <Pill tone={STATUS_TONE[doc.status]}>{STATUS_LABEL[doc.status]}</Pill>
       <span className="font-mono text-xs text-muted">
-        {doc.indexedAt ?? "—"}
+        {formatIndexedAt(doc.indexed_at)}
       </span>
       <Dropdown align="end">
         <Dropdown.Trigger>
           <IconButton
             variant="ghost"
             size="sm"
-            aria-label={`Acciones para ${doc.name}`}
+            aria-label={`Acciones para ${doc.title}`}
           >
             <MoreHorizontal size={16} strokeWidth={2} />
           </IconButton>
@@ -104,7 +126,7 @@ function DocumentRow({
           <Dropdown.Item
             icon={<Eye size={14} strokeWidth={2} />}
             onSelect={() =>
-              toast.info(`Vista previa de ${doc.name}`, {
+              toast.info(`Vista previa de ${doc.title}`, {
                 description: "Próximamente: visor inline de documentos.",
               })
             }
@@ -114,12 +136,11 @@ function DocumentRow({
           <Dropdown.Item
             icon={<RefreshCw size={14} strokeWidth={2} />}
             disabled={doc.status === "indexing"}
-            onSelect={() => {
-              reindexDocument(doc.id);
-              toast.info(`Reindexando ${doc.name}`, {
-                description: "Esto puede tardar unos segundos.",
-              });
-            }}
+            onSelect={() =>
+              toast.info(`Reindexar ${doc.title}`, {
+                description: "Disponible en HU14 (Sprint 4).",
+              })
+            }
           >
             Reindexar
           </Dropdown.Item>
@@ -127,7 +148,7 @@ function DocumentRow({
             icon={<Download size={14} strokeWidth={2} />}
             onSelect={() =>
               toast.info("Descarga simulada", {
-                description: `${doc.name} estaría disponible en producción.`,
+                description: `${doc.title} estaría disponible en producción.`,
               })
             }
           >

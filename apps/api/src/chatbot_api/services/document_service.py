@@ -10,7 +10,7 @@ from chatbot_api.core.storage import get_storage
 from chatbot_api.models import Document
 from chatbot_api.models.enums import DocumentSourceType, DocumentStatus
 from chatbot_api.repositories.document import document_repository
-from chatbot_api.schemas.document import DocumentRead
+from chatbot_api.schemas.document import DocumentRead, DocumentSummary
 from chatbot_api.schemas.pagination import Page, PageParams
 
 
@@ -52,6 +52,18 @@ async def get_detail(db: AsyncSession, document_id: int) -> DocumentRead:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
     chunks = await document_repository.chunk_count(db, doc.id)
     return DocumentRead.model_validate(doc).model_copy(update={"chunk_count": chunks})
+
+
+async def get_summary(db: AsyncSession) -> DocumentSummary:
+    counts, total, total_chunks = await document_repository.status_summary(db)
+    return DocumentSummary(
+        total=total,
+        total_chunks=total_chunks,
+        indexed=counts[DocumentStatus.indexed],
+        indexing=counts[DocumentStatus.indexing],
+        pending=counts[DocumentStatus.pending],
+        error=counts[DocumentStatus.error],
+    )
 
 
 async def upload_document(

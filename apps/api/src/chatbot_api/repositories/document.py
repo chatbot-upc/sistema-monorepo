@@ -74,6 +74,29 @@ class DocumentRepository(BaseRepository[Document, _DocCreate, _DocUpdate]):
         )
         return int(result.scalar_one())
 
+    async def status_summary(
+        self, db: AsyncSession
+    ) -> tuple[dict[DocumentStatus, int], int, int]:
+        """Aggregate counts across every document for the admin dashboard.
+
+        Returns (counts_by_status, total_documents, total_chunks).
+        Single SQL trip — avoids fanning out one count query per status.
+        """
+        status_query = select(Document.status, func.count(Document.id)).group_by(
+            Document.status
+        )
+        status_result = await db.execute(status_query)
+        counts: dict[DocumentStatus, int] = {s: 0 for s in DocumentStatus}
+        total = 0
+        for status_value, count in status_result.all():
+            counts[status_value] = int(count)
+            total += int(count)
+
+        chunks_result = await db.execute(select(func.count(DocumentChunk.id)))
+        total_chunks = int(chunks_result.scalar_one())
+
+        return counts, total, total_chunks
+
     async def get_by_sha256(self, db: AsyncSession, sha256: str) -> Document | None:
         result = await db.execute(select(Document).where(Document.sha256 == sha256))
         return result.scalars().first()

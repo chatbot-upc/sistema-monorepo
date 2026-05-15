@@ -10,9 +10,12 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import { addDocument } from "@/lib/mock";
-import type { DocType } from "./useDocumentFilters";
 
-const TYPE_OPTIONS: SelectOption<DocType>[] = [
+// Upload real llega en HU12/SW-21 (Sprint 3). Mantengo el drawer en modo mock
+// con su propio tipo local para no romper SW-43.
+type UploadDocType = "PDF" | "MD" | "TXT";
+
+const TYPE_OPTIONS: SelectOption<UploadDocType>[] = [
   { value: "PDF", label: "PDF" },
   { value: "MD", label: "Markdown" },
   { value: "TXT", label: "Texto" },
@@ -26,7 +29,7 @@ interface UploadDrawerProps {
 export function UploadDrawer({ open, onOpenChange }: UploadDrawerProps) {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
-  const [type, setType] = useState<DocType>("PDF");
+  const [type, setType] = useState<UploadDocType>("PDF");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [progress, setProgress] = useState<number | null>(null);

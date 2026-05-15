@@ -5,7 +5,7 @@ from chatbot_api.api.dependencies import get_current_admin
 from chatbot_api.core.db import get_session
 from chatbot_api.models import Admin
 from chatbot_api.models.enums import DocumentSourceType, DocumentStatus
-from chatbot_api.schemas.document import DocumentRead
+from chatbot_api.schemas.document import DocumentRead, DocumentSummary
 from chatbot_api.schemas.pagination import Page, PageParams
 from chatbot_api.services import document_service
 
@@ -27,6 +27,14 @@ async def list_documents(
         source_type=source_type,
         pagination=PageParams(page=page, size=size),
     )
+
+
+@router.get("/summary", response_model=DocumentSummary)
+async def get_documents_summary(
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> DocumentSummary:
+    return await document_service.get_summary(db)
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
