@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     meta_verify_token: str = ""
     meta_app_secret: str = ""
     meta_phone_number_id: str = ""
+    meta_waba_id: str = ""
     meta_access_token: str = ""
     meta_graph_api_version: str = "v21.0"
 
