@@ -1,4 +1,4 @@
-"""Bulk-ingest PDFs from scrapping/upc_documents/ con dedupe sha256.
+"""Bulk-ingest PDFs con dedupe sha256.
 
 Asegúrate de tener Postgres + Redis corriendo + worker Celery activo
 (uv run celery -A chatbot_api.core.celery_app worker --loglevel=info).
@@ -6,6 +6,7 @@ Asegúrate de tener Postgres + Redis corriendo + worker Celery activo
 Uso:
     uv run python scripts/bulk_ingest.py --category becas --limit 10
     uv run python scripts/bulk_ingest.py --all
+    uv run python scripts/bulk_ingest.py --path scrapping/Mallas
 """
 
 import argparse
@@ -20,9 +21,8 @@ from chatbot_api.core.storage import get_storage
 from chatbot_api.models import Document
 from chatbot_api.models.enums import DocumentSourceType, DocumentStatus
 
-SCRAPING_BASE = (
-    Path(__file__).resolve().parent.parent.parent.parent / "scrapping" / "upc_documents"
-)
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SCRAPING_BASE = REPO_ROOT / "scrapping" / "upc_documents"
 
 
 async def _ingest_one(filepath: Path) -> tuple[str, int | None]:
@@ -64,22 +64,37 @@ async def main() -> None:
     )
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--all", action="store_true", help="Ingest todos los PDFs")
+    parser.add_argument(
+        "--path",
+        type=str,
+        help="Directorio arbitrario (recursivo) con PDFs. Relativo al repo root o absoluto.",
+    )
     args = parser.parse_args()
 
-    pdfs_dir = SCRAPING_BASE / "pdfs"
-    if not pdfs_dir.exists():
-        print(f"Error: {pdfs_dir} no existe.")
-        return
-
-    if args.all:
-        paths = list(pdfs_dir.rglob("*.pdf"))
-    elif args.category:
-        paths = sorted((pdfs_dir / args.category).glob("*.pdf"))[: args.limit]
+    if args.path:
+        candidate = Path(args.path)
+        target_dir = candidate if candidate.is_absolute() else (REPO_ROOT / candidate)
+        if not target_dir.exists():
+            print(f"Error: {target_dir} no existe.")
+            return
+        paths = sorted(target_dir.rglob("*.pdf"))
+        source_label = str(target_dir)
     else:
-        print("Pasa --category <nombre> --limit N o --all")
-        return
+        pdfs_dir = SCRAPING_BASE / "pdfs"
+        if not pdfs_dir.exists():
+            print(f"Error: {pdfs_dir} no existe.")
+            return
 
-    print(f"Ingesting {len(paths)} PDFs from {pdfs_dir}...")
+        if args.all:
+            paths = list(pdfs_dir.rglob("*.pdf"))
+        elif args.category:
+            paths = sorted((pdfs_dir / args.category).glob("*.pdf"))[: args.limit]
+        else:
+            print("Pasa --category <nombre> --limit N, --all, o --path <dir>")
+            return
+        source_label = str(pdfs_dir)
+
+    print(f"Ingesting {len(paths)} PDFs from {source_label}...")
     queued = 0
     skipped = 0
     for p in paths:

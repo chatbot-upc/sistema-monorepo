@@ -1,8 +1,9 @@
 """LangChain tools que invoca el agente."""
 
 from langchain_core.tools import tool
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from chatbot_api.core.db import get_session_factory
+from chatbot_api.core.settings import get_settings
 
 from .retriever import retrieve
 
@@ -21,9 +22,18 @@ async def search_knowledge_base(query: str, top_k: int = 5) -> str:
     Returns:
         Texto con fragmentos relevantes, cada uno con score y doc_id como cita.
     """
-    factory = get_session_factory()
-    async with factory() as db:
-        results = await retrieve(db, query, k=top_k)
+    # Fresh engine per call: the agent runs inside asyncio.run() in Celery workers,
+    # so a process-wide cached engine would end up tied to a dead event loop on the
+    # second task. Spinning up a transient engine sidesteps the "different loop"
+    # RuntimeError at the cost of ~10ms per call.
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            results = await retrieve(db, query, k=top_k)
+    finally:
+        await engine.dispose()
     if not results:
         return "no_results"
     return "\n\n---\n\n".join(
