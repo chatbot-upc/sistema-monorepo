@@ -23,6 +23,23 @@ def _reset_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_intent_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub = AsyncMock(
+        return_value={
+            "intent_id": None,
+            "intent_name": None,
+            "confidence": 0.0,
+            "used_fallback": False,
+            "sbert_intent_name": None,
+            "sbert_confidence": 0.0,
+        }
+    )
+    monkeypatch.setattr(
+        "chatbot_api.workers.conversation.intent_classifier_service.classify", stub
+    )
+
+
 def _parsed(meta_id: str, phone: str, text: str = "hola") -> dict[str, Any]:
     return ParsedInboundMessage(
         meta_message_id=meta_id,

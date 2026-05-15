@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_fetch_k: int = 20
 
+    intent_sbert_threshold: float = 0.55
+
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_backend: str = "redis://localhost:6379/2"
 

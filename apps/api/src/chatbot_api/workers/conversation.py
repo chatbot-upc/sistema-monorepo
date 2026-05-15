@@ -21,12 +21,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from chatbot_api.core.celery_app import celery_app
 from chatbot_api.core.settings import get_settings
+from chatbot_api.models import ConversationIntent
 from chatbot_api.models.enums import ConversationStatus
 from chatbot_api.repositories.conversation import conversation_repository
 from chatbot_api.repositories.message import message_repository
 from chatbot_api.repositories.student import student_repository
 from chatbot_api.schemas.whatsapp import ParsedInboundMessage
-from chatbot_api.services import rag_service, whatsapp_service
+from chatbot_api.services import intent_classifier_service, rag_service, whatsapp_service
 
 log = structlog.get_logger()
 
@@ -86,6 +87,31 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 message_id=inbound.id,
                 conversation_created=conv_created,
                 student_created=student_created,
+            )
+
+            intent_result = await intent_classifier_service.classify(
+                db=db, text=parsed.text
+            )
+            if intent_result["intent_id"] is not None:
+                inbound.intent_id = intent_result["intent_id"]
+                db.add(
+                    ConversationIntent(
+                        conversation_id=conv.id,
+                        intent_id=intent_result["intent_id"],
+                        confidence=float(intent_result["confidence"]),
+                    )
+                )
+                await db.commit()
+            log.info(
+                "intent_classified",
+                correlation_id=correlation_id,
+                conversation_id=conv.id,
+                message_id=inbound.id,
+                intent_name=intent_result["intent_name"],
+                confidence=intent_result["confidence"],
+                used_fallback=intent_result["used_fallback"],
+                sbert_intent_name=intent_result["sbert_intent_name"],
+                sbert_confidence=intent_result["sbert_confidence"],
             )
 
             if conv.status == ConversationStatus.takeover:

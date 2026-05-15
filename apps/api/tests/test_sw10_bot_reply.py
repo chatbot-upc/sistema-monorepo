@@ -29,6 +29,24 @@ def _reset_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_intent_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SW-14 classifier is tested separately; here we keep it out of the worker path."""
+    stub = AsyncMock(
+        return_value={
+            "intent_id": None,
+            "intent_name": None,
+            "confidence": 0.0,
+            "used_fallback": False,
+            "sbert_intent_name": None,
+            "sbert_confidence": 0.0,
+        }
+    )
+    monkeypatch.setattr(
+        "chatbot_api.workers.conversation.intent_classifier_service.classify", stub
+    )
+
+
 @pytest.mark.asyncio
 async def test_send_message_dev_bypass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_ACCESS_TOKEN", "")
