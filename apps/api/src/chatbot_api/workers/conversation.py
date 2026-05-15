@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -29,6 +30,18 @@ from chatbot_api.services import rag_service, whatsapp_service
 
 log = structlog.get_logger()
 
+_WELCOME_PATH = (
+    Path(__file__).parent.parent / "prompts" / "v1" / "welcome.md"
+)
+_welcome_text: str | None = None
+
+
+def _get_welcome_text() -> str:
+    global _welcome_text
+    if _welcome_text is None:
+        _welcome_text = _WELCOME_PATH.read_text(encoding="utf-8").strip()
+    return _welcome_text
+
 
 def _make_session_factory() -> async_sessionmaker[Any]:
     settings = get_settings()
@@ -43,12 +56,12 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
 
     async with factory() as db:
         try:
-            await student_repository.upsert_by_phone(
+            _, student_created = await student_repository.upsert_by_phone(
                 db,
                 phone_e164=parsed.from_phone,
                 display_name=parsed.display_name,
             )
-            conv, created = await conversation_repository.get_or_create_open(
+            conv, conv_created = await conversation_repository.get_or_create_open(
                 db, parsed.from_phone
             )
             inbound = await message_repository.create_inbound(
@@ -71,7 +84,8 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 correlation_id=correlation_id,
                 conversation_id=conv.id,
                 message_id=inbound.id,
-                conversation_created=created,
+                conversation_created=conv_created,
+                student_created=student_created,
             )
 
             if conv.status == ConversationStatus.takeover:
@@ -81,6 +95,26 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     conversation_id=conv.id,
                 )
                 return
+
+            if student_created:
+                welcome_text = _get_welcome_text()
+                welcome_meta_id = await whatsapp_service.send_message(
+                    to=parsed.from_phone, body=welcome_text
+                )
+                welcome_msg = await message_repository.create_bot(
+                    db,
+                    conversation_id=conv.id,
+                    content=welcome_text,
+                    meta_message_id=welcome_meta_id,
+                )
+                await db.commit()
+                log.info(
+                    "welcome_sent",
+                    correlation_id=correlation_id,
+                    conversation_id=conv.id,
+                    bot_message_id=welcome_msg.id,
+                    meta_message_id=welcome_meta_id,
+                )
 
             started = time.perf_counter()
             result = await rag_service.answer(

@@ -184,6 +184,18 @@ async def test_worker_idempotent_on_duplicate_meta_id(
         timestamp="1700000000",
     ).model_dump()
 
+    # Pre-create student so the welcome path doesn't fire (SW-12 scope).
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from chatbot_api.repositories.student import student_repository
+
+    setup_engine = create_async_engine(postgres_url)
+    setup_factory = async_sessionmaker(setup_engine, expire_on_commit=False)
+    async with setup_factory() as setup_db:
+        await student_repository.upsert_by_phone(setup_db, phone_e164="+51900000050")
+        await setup_db.commit()
+    await setup_engine.dispose()
+
     fake_answer = AsyncMock(return_value={"text": "ok", "tool_calls": []})
     fake_send = AsyncMock(return_value="wamid.bot.dup")
     with (
@@ -194,9 +206,6 @@ async def test_worker_idempotent_on_duplicate_meta_id(
     ):
         await _process_async(parsed, "corr-1")
         await _process_async(parsed, "corr-2")
-
-    # Read with a fresh session — worker commits to its own engine.
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     engine = create_async_engine(postgres_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)

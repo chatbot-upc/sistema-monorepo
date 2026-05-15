@@ -88,8 +88,18 @@ def _parsed(meta_id: str = "wamid.in.1", phone: str = "+51900000700") -> dict[st
 async def test_worker_persists_student_and_bot(
     postgres_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """RAG response path for a returning student (welcome is SW-12, tested elsewhere)."""
     monkeypatch.setenv("DATABASE_URL", postgres_url)
     get_settings.cache_clear()
+
+    # Pre-create the student so this run takes the "returning student" path.
+    phone = "+51900000700"
+    setup_engine = create_async_engine(postgres_url)
+    setup_factory = async_sessionmaker(setup_engine, expire_on_commit=False)
+    async with setup_factory() as setup_db:
+        await student_repository.upsert_by_phone(setup_db, phone_e164=phone)
+        await setup_db.commit()
+    await setup_engine.dispose()
 
     fake_answer = AsyncMock(
         return_value={
@@ -105,11 +115,11 @@ async def test_worker_persists_student_and_bot(
         patch("chatbot_api.workers.conversation.rag_service.answer", fake_answer),
         patch("chatbot_api.workers.conversation.whatsapp_service.send_message", fake_send),
     ):
-        await _process_async(_parsed(), "corr-sw10-1")
+        await _process_async(_parsed(phone=phone), "corr-sw10-1")
 
     fake_answer.assert_awaited_once()
     fake_send.assert_awaited_once_with(
-        to="+51900000700", body="Matricula inicia el 1 de junio."
+        to=phone, body="Matricula inicia el 1 de junio."
     )
 
     engine = create_async_engine(postgres_url)
