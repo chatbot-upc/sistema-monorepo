@@ -1,12 +1,14 @@
 """Outbound WhatsApp via Meta Cloud API (Graph API).
 
-Module-level `_client` httpx.AsyncClient — Python guarantees the module is initialized
-once per process. Worker procs build their own client; the FastAPI lifespan closes it
-for the API process (see `core/lifespan.py`).
+Each call builds its own `httpx.AsyncClient`. Celery workers run every task
+inside a separate `asyncio.run()` — a process-wide client would end up tied
+to a dead event loop on the second task and crash with "Event loop is closed".
+The cost of one TLS handshake per call (~30-50 ms) is negligible next to the
+~5-10s of RAG round-trips. The `_get_client` factory stays as a seam for
+test mocking via `monkeypatch.setattr`.
 
-Dev-bypass: when META_ACCESS_TOKEN is unset, `send_message` logs the outbound and
-returns a synthetic id instead of hitting Meta. Keeps local dev unblocked without
-real Meta sandbox credentials.
+Dev-bypass: when META_ACCESS_TOKEN is unset, `send_message` logs the outbound
+and returns a synthetic id instead of hitting Meta.
 """
 
 from __future__ import annotations
@@ -21,23 +23,18 @@ from chatbot_api.core.settings import get_settings
 
 log = structlog.get_logger()
 
-_client: httpx.AsyncClient | None = None
 _DEV_PREFIX = "wamid.dev."
+_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 
 def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None:
-        _client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
-    return _client
+    """Builds a fresh client per call (see module docstring)."""
+    return httpx.AsyncClient(timeout=_TIMEOUT)
 
 
 async def shutdown() -> None:
-    """Close the shared client. Invoked from the FastAPI lifespan."""
-    global _client
-    if _client is not None:
-        await _client.aclose()
-        _client = None
+    """Kept for the FastAPI lifespan interface — no shared state to release."""
+    return None
 
 
 def _normalize_to(phone: str) -> str:
@@ -76,9 +73,13 @@ async def send_message(*, to: str, body: str) -> str:
         "Authorization": f"Bearer {settings.meta_access_token}",
         "Content-Type": "application/json",
     }
-    resp = await _get_client().post(url, json=payload, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
+    client = _get_client()
+    try:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    finally:
+        await client.aclose()
     messages = data.get("messages") or []
     if not messages:
         raise RuntimeError(f"meta response missing messages[]: {data}")

@@ -1,8 +1,11 @@
-"""RAG agent service. Agent built lazily on first use.
+"""RAG agent service. Agent built fresh per call.
 
-Eager build at import time crashes tests that don't supply OPENAI_API_KEY (e.g.,
-worker-flow tests that mock `answer`). We defer to the first `answer()` call so
-imports stay cheap.
+A cached LangChain agent holds a `ChatOpenAI` whose internal httpx client gets
+tied to whatever event loop initialised it. Celery workers run each task in
+their own `asyncio.run()` loop, so a process-wide agent crashes from the
+second task on with "Event loop is closed". We trade ~50-100 ms of agent
+construction per call for correctness — negligible vs. the multi-second RAG
+round-trips.
 """
 
 from pathlib import Path
@@ -16,25 +19,28 @@ from chatbot_api.core.settings import get_settings
 from chatbot_api.rag.tools import escalate_to_human, search_knowledge_base
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "v1"
+_system_prompt: str | None = None  # immutable text cache; safe to keep
 
-_agent: Any = None
+
+def _get_system_prompt() -> str:
+    global _system_prompt
+    if _system_prompt is None:
+        _system_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(encoding="utf-8")
+    return _system_prompt
 
 
 def _get_agent() -> Any:
-    global _agent
-    if _agent is None:
-        settings = get_settings()
-        chat = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=SecretStr(settings.openai_api_key),
-        )
-        system_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(encoding="utf-8")
-        _agent = create_agent(
-            model=chat,
-            tools=[escalate_to_human, search_knowledge_base],
-            system_prompt=system_prompt,
-        )
-    return _agent
+    """Builds a fresh agent per call (see module docstring)."""
+    settings = get_settings()
+    chat = ChatOpenAI(
+        model=settings.openai_model,
+        api_key=SecretStr(settings.openai_api_key),
+    )
+    return create_agent(
+        model=chat,
+        tools=[escalate_to_human, search_knowledge_base],
+        system_prompt=_get_system_prompt(),
+    )
 
 
 async def answer(*, user_text: str, correlation_id: str) -> dict[str, Any]:

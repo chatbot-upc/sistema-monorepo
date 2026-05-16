@@ -47,7 +47,6 @@ class _IntentIndex:
 
 
 _index: _IntentIndex | None = None
-_llm: ChatOpenAI | None = None
 
 
 async def _build_index(db: AsyncSession) -> _IntentIndex:
@@ -86,15 +85,16 @@ def reset_index() -> None:
 
 
 def _get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        s = get_settings()
-        _llm = ChatOpenAI(
-            model=s.openai_model,
-            api_key=SecretStr(s.openai_api_key),
-            temperature=0,
-        )
-    return _llm
+    """Builds a fresh LLM per call. A cached ChatOpenAI holds an internal httpx
+    client tied to the first event loop, so workers using `asyncio.run()` per
+    task would crash from the second call onwards with "Event loop is closed".
+    """
+    s = get_settings()
+    return ChatOpenAI(
+        model=s.openai_model,
+        api_key=SecretStr(s.openai_api_key),
+        temperature=0,
+    )
 
 
 def _sbert_classify(

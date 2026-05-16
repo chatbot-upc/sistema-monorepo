@@ -74,6 +74,7 @@ async def test_send_message_real_post(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     fake_client = MagicMock()
     fake_client.post = AsyncMock(return_value=fake_resp)
+    fake_client.aclose = AsyncMock()
     monkeypatch.setattr(whatsapp_service, "_get_client", lambda: fake_client)
 
     meta_id = await whatsapp_service.send_message(to="+51900000001", body="hola")

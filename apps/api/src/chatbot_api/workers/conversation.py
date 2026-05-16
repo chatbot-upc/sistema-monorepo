@@ -12,6 +12,7 @@ Steps:
 from __future__ import annotations
 
 import asyncio
+import gc
 import time
 from pathlib import Path
 from typing import Any
@@ -189,6 +190,12 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 meta_message_id=parsed.meta_message_id,
             )
             raise
+        finally:
+            # Drain GC while this loop is still alive so transient httpx
+            # clients inside ChatOpenAI/OpenAIEmbeddings close their connections
+            # here, not in the next task's loop (avoids cosmetic
+            # "Event loop is closed" warnings from cross-loop aclose).
+            gc.collect()
 
 
 @celery_app.task(  # type: ignore[untyped-decorator]
