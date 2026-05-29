@@ -29,14 +29,20 @@ from chatbot_api.repositories.conversation import conversation_repository
 from chatbot_api.repositories.message import message_repository
 from chatbot_api.repositories.student import student_repository
 from chatbot_api.schemas.whatsapp import ParsedInboundMessage
-from chatbot_api.services import intent_classifier_service, rag_service, whatsapp_service
+from chatbot_api.services import (
+    intent_classifier_service,
+    push_service,
+    rag_service,
+    whatsapp_service,
+)
 
 log = structlog.get_logger()
 
-_WELCOME_PATH = (
-    Path(__file__).parent.parent / "prompts" / "v1" / "welcome.md"
-)
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "v1"
+_WELCOME_PATH = _PROMPTS_DIR / "welcome.md"
+_ESCALATION_NOTICE_PATH = _PROMPTS_DIR / "escalation_notice.md"
 _welcome_text: str | None = None
+_escalation_notice: str | None = None
 
 
 def _get_welcome_text() -> str:
@@ -44,6 +50,13 @@ def _get_welcome_text() -> str:
     if _welcome_text is None:
         _welcome_text = _WELCOME_PATH.read_text(encoding="utf-8").strip()
     return _welcome_text
+
+
+def _get_escalation_notice() -> str:
+    global _escalation_notice
+    if _escalation_notice is None:
+        _escalation_notice = _ESCALATION_NOTICE_PATH.read_text(encoding="utf-8").strip()
+    return _escalation_notice
 
 
 def _make_session_factory() -> async_sessionmaker[Any]:
@@ -54,6 +67,84 @@ def _make_session_factory() -> async_sessionmaker[Any]:
 
 _HISTORY_WINDOW_HOURS = 24
 _HISTORY_LIMIT = 20
+_PUSH_BODY_LIMIT = 140
+
+
+async def _send_escalation_side_effects(
+    db: Any,
+    *,
+    conv_id: int,
+    student_phone: str,
+    inbound_id: int,
+    inbound_text: str,
+    reason: str,
+    source: str,
+    notify_student: bool,
+    correlation_id: str,
+) -> None:
+    """SW-29 + SW-31 side effects.
+
+    - notify_student=True: send a fixed escalation notice to the student and
+      persist it as a bot message (used by the deterministic SBERT path).
+      The LLM path lets the agent write its own farewell, so it skips this.
+    - Always: broadcast a push to every active admin with the student phone,
+      inbound text, conversation id, and reason.
+    """
+    if notify_student:
+        notice = _get_escalation_notice()
+        try:
+            meta_id = await whatsapp_service.send_message(
+                to=student_phone, body=notice
+            )
+        except Exception:
+            log.exception(
+                "escalation_notice_send_failed",
+                correlation_id=correlation_id,
+                conversation_id=conv_id,
+            )
+        else:
+            await message_repository.create_bot(
+                db,
+                conversation_id=conv_id,
+                content=notice,
+                meta_message_id=meta_id,
+            )
+            log.info(
+                "escalation_notice_sent",
+                correlation_id=correlation_id,
+                conversation_id=conv_id,
+                meta_message_id=meta_id,
+            )
+
+    try:
+        push_body = inbound_text[:_PUSH_BODY_LIMIT]
+        sent = await push_service.notify_all_admins(
+            db,
+            title=f"🔔 Derivada · {student_phone}",
+            body=push_body,
+            data={
+                "type": "escalation",
+                "conversation_id": str(conv_id),
+                "student_phone": student_phone,
+                "message_id": str(inbound_id),
+                "reason": reason,
+                "source": source,
+                "url": f"/conversations/{conv_id}",
+            },
+        )
+        log.info(
+            "escalation_push_dispatched",
+            correlation_id=correlation_id,
+            conversation_id=conv_id,
+            push_sent=sent,
+            source=source,
+        )
+    except Exception:
+        log.exception(
+            "escalation_push_failed",
+            correlation_id=correlation_id,
+            conversation_id=conv_id,
+        )
 
 
 def _to_chat_history(messages: list[Message]) -> list[dict[str, str]]:
@@ -146,7 +237,6 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
             # SW-30: deterministic escalation when the classifier resolves the
             # message to "solicita_humano" (e.g. "quiero hablar con un asesor").
             # Skip the RAG roundtrip entirely — the LLM doesn't need to decide.
-            # The student-facing notice + admin push belong to SW-29/SW-31.
             if intent_result.get("intent_name") == "solicita_humano":
                 conv.status = ConversationStatus.takeover
                 conv.meta = {
@@ -164,6 +254,20 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     reason="intent:solicita_humano",
                     source="intent_classifier",
                 )
+                # SW-29: student gets a fixed notice (LLM didn't generate one).
+                # SW-31: admins receive a push with full context.
+                await _send_escalation_side_effects(
+                    db,
+                    conv_id=conv.id,
+                    student_phone=parsed.from_phone,
+                    inbound_id=inbound.id,
+                    inbound_text=parsed.text,
+                    reason="intent:solicita_humano",
+                    source="intent_classifier",
+                    notify_student=True,
+                    correlation_id=correlation_id,
+                )
+                await db.commit()
                 return
 
             if student_created:
@@ -262,6 +366,20 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     conversation_id=conv.id,
                     reason=reason,
                     source="llm",
+                )
+                # SW-31: admins receive push. Student already got the LLM
+                # answer (which typically explains the handoff), so we skip
+                # the canned notice to avoid two messages back-to-back.
+                await _send_escalation_side_effects(
+                    db,
+                    conv_id=conv.id,
+                    student_phone=parsed.from_phone,
+                    inbound_id=inbound.id,
+                    inbound_text=parsed.text,
+                    reason=reason,
+                    source="llm",
+                    notify_student=False,
+                    correlation_id=correlation_id,
                 )
 
             await db.commit()

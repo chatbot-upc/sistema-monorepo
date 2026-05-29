@@ -26,5 +26,12 @@ class AdminRepository(BaseRepository[Admin, _AdminCreate, _AdminUpdate]):
         )
         return result.scalars().first()
 
+    async def list_active(self, db: AsyncSession) -> list[Admin]:
+        """All active admins. Used to broadcast escalation push (SW-31)."""
+        result = await db.execute(
+            select(Admin).where(Admin.active.is_(True)).order_by(Admin.id.asc())
+        )
+        return list(result.scalars().all())
+
 
 admin_repository = AdminRepository(Admin)

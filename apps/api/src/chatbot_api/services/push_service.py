@@ -105,6 +105,28 @@ async def register_device(
     return device
 
 
+async def notify_all_admins(
+    db: AsyncSession,
+    *,
+    title: str,
+    body: str,
+    data: dict[str, str] | None = None,
+) -> int:
+    """Broadcast a push to every active admin. Returns total successful sends."""
+    from chatbot_api.repositories.admin import admin_repository
+
+    admins = await admin_repository.list_active(db)
+    if not admins:
+        log.info("notify_all_admins_no_admins")
+        return 0
+    total = 0
+    for admin in admins:
+        total += await notify_admin(
+            db, admin_id=admin.id, title=title, body=body, data=data
+        )
+    return total
+
+
 async def notify_admin(
     db: AsyncSession,
     *,

@@ -197,7 +197,8 @@ async def test_sbert_solicita_humano_escalates_before_rag(
     )
 
     fake_rag = AsyncMock(return_value={"text": "should not run", "tool_calls": []})
-    fake_send = AsyncMock(return_value="wamid.sbert.should.not.send")
+    fake_send = AsyncMock(return_value="wamid.sbert.notice")
+    fake_push = AsyncMock(return_value=0)
 
     with (
         patch(
@@ -211,6 +212,10 @@ async def test_sbert_solicita_humano_escalates_before_rag(
             "chatbot_api.workers.conversation.whatsapp_service.send_message",
             fake_send,
         ),
+        patch(
+            "chatbot_api.workers.conversation.push_service.notify_all_admins",
+            fake_push,
+        ),
     ):
         await _process_async(
             _parsed(
@@ -222,7 +227,12 @@ async def test_sbert_solicita_humano_escalates_before_rag(
         )
 
     fake_rag.assert_not_awaited()
-    fake_send.assert_not_awaited()
+    # SW-29: student gets the canned notice in the SBERT path.
+    fake_send.assert_awaited_once()
+    assert fake_send.await_args.kwargs["to"] == phone
+    assert "asesor humano" in fake_send.await_args.kwargs["body"].lower()
+    # SW-31: push fires too.
+    fake_push.assert_awaited_once()
 
     conv = await _read_conversation(postgres_url, phone)
     assert conv.status == ConversationStatus.takeover
