@@ -76,14 +76,27 @@ async def answer(
 
     last = result["messages"][-1]
     tool_calls: list[dict[str, Any]] = []
+    input_tokens = 0
+    output_tokens = 0
     for msg in result["messages"]:
         for tc in getattr(msg, "tool_calls", None) or []:
             tool_calls.append({"name": tc.get("name"), "args": tc.get("args")})
+        # Sum usage_metadata across every AIMessage. With tool calls the agent
+        # may invoke the LLM 2-4 times per turn — each AIMessage carries its
+        # own input/output counts. Pre-LangChain 0.3 wrappers occasionally
+        # missed this dict, so we fall back to response_metadata.token_usage.
+        usage = getattr(msg, "usage_metadata", None) or {}
+        input_tokens += int(usage.get("input_tokens") or 0)
+        output_tokens += int(usage.get("output_tokens") or 0)
+        if not usage:
+            meta = getattr(msg, "response_metadata", None) or {}
+            token_usage = meta.get("token_usage") or {}
+            input_tokens += int(token_usage.get("prompt_tokens") or 0)
+            output_tokens += int(token_usage.get("completion_tokens") or 0)
 
-    usage = result.get("usage_metadata") or {}
     return {
         "text": getattr(last, "content", str(last)),
         "tool_calls": tool_calls,
-        "input_tokens": usage.get("input_tokens"),
-        "output_tokens": usage.get("output_tokens"),
+        "input_tokens": input_tokens or None,
+        "output_tokens": output_tokens or None,
     }
