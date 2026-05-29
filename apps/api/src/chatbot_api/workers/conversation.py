@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +23,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from chatbot_api.core.celery_app import celery_app
 from chatbot_api.core.settings import get_settings
-from chatbot_api.models import ConversationIntent
-from chatbot_api.models.enums import ConversationStatus
+from chatbot_api.models import ConversationIntent, Message
+from chatbot_api.models.enums import ConversationStatus, MessageRole
 from chatbot_api.repositories.conversation import conversation_repository
 from chatbot_api.repositories.message import message_repository
 from chatbot_api.repositories.student import student_repository
@@ -49,6 +50,24 @@ def _make_session_factory() -> async_sessionmaker[Any]:
     settings = get_settings()
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+_HISTORY_WINDOW_HOURS = 24
+_HISTORY_LIMIT = 20
+
+
+def _to_chat_history(messages: list[Message]) -> list[dict[str, str]]:
+    """Map DB messages to LangChain chat format. Skip empty content.
+
+    student → user · bot/admin → assistant (admin handles takeover continuity).
+    """
+    history: list[dict[str, str]] = []
+    for m in messages:
+        if not m.content:
+            continue
+        role = "user" if m.role == MessageRole.student else "assistant"
+        history.append({"role": role, "content": m.content})
+    return history
 
 
 async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> None:
@@ -144,9 +163,27 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     meta_message_id=welcome_meta_id,
                 )
 
+            since = datetime.now() - timedelta(hours=_HISTORY_WINDOW_HOURS)
+            recent_msgs = await message_repository.list_recent_for_conversation(
+                db,
+                conversation_id=conv.id,
+                since=since,
+                exclude_after_id=inbound.id,
+                limit=_HISTORY_LIMIT,
+            )
+            history = _to_chat_history(recent_msgs)
+            log.info(
+                "history_loaded",
+                correlation_id=correlation_id,
+                conversation_id=conv.id,
+                history_turns=len(history),
+            )
+
             started = time.perf_counter()
             result = await rag_service.answer(
-                user_text=parsed.text, correlation_id=correlation_id
+                user_text=parsed.text,
+                correlation_id=correlation_id,
+                history=history,
             )
             latency_ms = int((time.perf_counter() - started) * 1000)
             answer_text = str(result.get("text") or "")

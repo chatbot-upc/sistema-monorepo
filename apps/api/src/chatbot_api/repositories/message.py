@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +41,38 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
             select(func.count(Message.id)).where(Message.conversation_id == conversation_id)
         )
         return int(result.scalar_one())
+
+    async def list_recent_for_conversation(
+        self,
+        db: AsyncSession,
+        conversation_id: int,
+        *,
+        since: datetime,
+        exclude_after_id: int | None = None,
+        limit: int = 20,
+    ) -> list[Message]:
+        """Last N student/bot messages of a conversation since `since`.
+
+        Used to feed conversation history to the RAG agent (SW-18/SW-25).
+        Returned ASC by id so the caller can map directly to chat history.
+        `exclude_after_id` filters out the inbound of the current turn (and any
+        bot message already inserted in this turn, e.g. the welcome template).
+        """
+        stmt = (
+            select(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.created_at >= since,
+            )
+            .order_by(Message.id.desc())
+            .limit(limit)
+        )
+        if exclude_after_id is not None:
+            stmt = stmt.where(Message.id < exclude_after_id)
+        result = await db.execute(stmt)
+        rows = list(result.scalars().all())
+        rows.reverse()
+        return rows
 
     async def get_by_meta_id(
         self, db: AsyncSession, meta_message_id: str

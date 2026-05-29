@@ -43,8 +43,17 @@ def _get_agent() -> Any:
     )
 
 
-async def answer(*, user_text: str, correlation_id: str) -> dict[str, Any]:
-    """Invoca el agente con el mensaje del usuario y devuelve respuesta + metadata.
+async def answer(
+    *,
+    user_text: str,
+    correlation_id: str,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Invoca el agente con el mensaje del usuario + historial reciente.
+
+    `history` is a list of {"role": "user"|"assistant", "content": str} entries
+    chronologically ordered (oldest first). It is prepended to the current user
+    message so the agent has multi-turn context (SW-18/SW-25).
 
     Returns:
         {
@@ -54,8 +63,11 @@ async def answer(*, user_text: str, correlation_id: str) -> dict[str, Any]:
             "output_tokens": int|None,
         }
     """
+    messages: list[dict[str, str]] = list(history or [])
+    messages.append({"role": "user", "content": user_text})
+
     result = await _get_agent().ainvoke(
-        {"messages": [{"role": "user", "content": user_text}]},
+        {"messages": messages},
         config={
             "recursion_limit": 10,
             "metadata": {"correlation_id": correlation_id},
