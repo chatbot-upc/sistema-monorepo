@@ -143,6 +143,29 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 )
                 return
 
+            # SW-30: deterministic escalation when the classifier resolves the
+            # message to "solicita_humano" (e.g. "quiero hablar con un asesor").
+            # Skip the RAG roundtrip entirely — the LLM doesn't need to decide.
+            # The student-facing notice + admin push belong to SW-29/SW-31.
+            if intent_result.get("intent_name") == "solicita_humano":
+                conv.status = ConversationStatus.takeover
+                conv.meta = {
+                    **(conv.meta or {}),
+                    "escalation_reason": "intent:solicita_humano",
+                    "escalation_source": "intent_classifier",
+                    "escalated_at": datetime.now().isoformat(),
+                    "escalated_from_message_id": inbound.id,
+                }
+                await db.commit()
+                log.info(
+                    "conversation_escalated",
+                    correlation_id=correlation_id,
+                    conversation_id=conv.id,
+                    reason="intent:solicita_humano",
+                    source="intent_classifier",
+                )
+                return
+
             if student_created:
                 welcome_text = _get_welcome_text()
                 welcome_meta_id = await whatsapp_service.send_message(
@@ -199,17 +222,48 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 to=parsed.from_phone, body=answer_text
             )
 
+            tool_calls = result.get("tool_calls") or []
             bot_msg = await message_repository.create_bot(
                 db,
                 conversation_id=conv.id,
                 content=answer_text,
-                retrieved_chunks=result.get("tool_calls") or [],
+                retrieved_chunks=tool_calls,
                 input_tokens=result.get("input_tokens"),
                 output_tokens=result.get("output_tokens"),
                 latency_ms=latency_ms,
                 model_used=settings.openai_model,
                 meta_message_id=meta_out_id,
             )
+
+            # SW-30: if the agent invoked escalate_to_human, flip the conversation
+            # to takeover so the next inbound skips the bot (see line ~119) and
+            # human admins can pick it up. The reason is preserved in conv.meta.
+            escalation = next(
+                (
+                    tc
+                    for tc in tool_calls
+                    if tc.get("name") == "escalate_to_human"
+                ),
+                None,
+            )
+            if escalation is not None:
+                reason = str((escalation.get("args") or {}).get("reason", "")).strip()
+                conv.status = ConversationStatus.takeover
+                conv.meta = {
+                    **(conv.meta or {}),
+                    "escalation_reason": reason,
+                    "escalation_source": "llm",
+                    "escalated_at": datetime.now().isoformat(),
+                    "escalated_from_message_id": inbound.id,
+                }
+                log.info(
+                    "conversation_escalated",
+                    correlation_id=correlation_id,
+                    conversation_id=conv.id,
+                    reason=reason,
+                    source="llm",
+                )
+
             await db.commit()
             log.info(
                 "bot_replied",
@@ -218,6 +272,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 bot_message_id=bot_msg.id,
                 latency_ms=latency_ms,
                 meta_message_id=meta_out_id,
+                escalated=escalation is not None,
             )
         except Exception:
             await db.rollback()
