@@ -161,6 +161,7 @@ async def notify_admin(
         payload_data.update(data)
 
     sent = 0
+    dead_device_ids: list[int] = []
     for device in devices:
         try:
             message = messaging.Message(
@@ -176,7 +177,52 @@ async def notify_admin(
                 device_id=device.id,
                 error=str(exc),
             )
+            if _is_token_dead(exc):
+                dead_device_ids.append(device.id)
+
+    if dead_device_ids:
+        await admin_device_repository.delete_many(db, dead_device_ids)
+        await db.commit()
+        log.info(
+            "admin_devices_cleaned",
+            admin_id=admin_id,
+            removed=len(dead_device_ids),
+        )
+
     log.info(
         "notify_admin_done", admin_id=admin_id, sent=sent, total=len(devices)
     )
     return sent
+
+
+# FCM error class names that indicate the token is permanently invalid and
+# should be evicted from the DB so it stops eating round-trips on every push.
+# Reference: https://firebase.google.com/docs/cloud-messaging/manage-tokens
+_DEAD_TOKEN_ERROR_NAMES = frozenset(
+    {
+        "UnregisteredError",
+        "InvalidArgumentError",
+        "SenderIdMismatchError",
+    }
+)
+_DEAD_TOKEN_MARKERS = (
+    "registration-token-not-registered",
+    "notregistered",
+    "invalidregistration",
+    "invalid-registration-token",
+    "mismatched-credential",
+    "sender-id-mismatch",
+)
+
+
+def _is_token_dead(exc: Exception) -> bool:
+    """Heuristic: detect permanently-invalid FCM tokens.
+
+    firebase-admin raises typed exceptions in recent versions but the wire
+    error string format has shifted across releases, so we match by both
+    class name and known substrings.
+    """
+    if type(exc).__name__ in _DEAD_TOKEN_ERROR_NAMES:
+        return True
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _DEAD_TOKEN_MARKERS)

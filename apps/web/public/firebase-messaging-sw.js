@@ -2,6 +2,9 @@
 // IMPORTANT: Service workers cannot read process.env. Replace these values
 // with the same firebaseConfig object you put in apps/web/.env.local.
 // (apiKey is safe to expose: it identifies the Firebase project, not auth.)
+//
+// SW version: 2 — bump this comment whenever you change the SW so the
+// browser fetches the new file (it byte-compares the script body).
 
 // Activate the new SW immediately and take control of all open clients.
 // Safe here because this SW only handles FCM (no asset caching); changes
@@ -33,6 +36,9 @@ messaging.onBackgroundMessage((payload) => {
     body: data.body || "",
     icon: "/favicon.ico",
     badge: "/favicon.ico",
+    // tag de-dupes notifications for the same conversation: a follow-up
+    // escalation/message replaces the previous bubble instead of stacking.
+    tag: data.conversation_id ? `conv-${data.conversation_id}` : undefined,
     data,
   };
   self.registration.showNotification(title, options);
@@ -40,6 +46,35 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/dashboard";
-  event.waitUntil(clients.openWindow(url));
+  const targetUrl = event.notification.data?.url || "/conversations";
+
+  event.waitUntil(
+    (async () => {
+      const allClients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+
+      // If a CRM tab is already open, focus it and navigate via postMessage
+      // instead of opening yet another tab. Falls back to openWindow.
+      for (const client of allClients) {
+        const url = new URL(client.url);
+        if (url.origin === self.location.origin) {
+          await client.focus();
+          // Try Next.js client navigation first; if no listener, fall back to
+          // a full nav so the admin still lands on the right page.
+          try {
+            client.postMessage({ type: "fcm:navigate", url: targetUrl });
+          } catch {}
+          // Belt and suspenders: ensure we land on the right URL.
+          if (!url.pathname.endsWith(targetUrl)) {
+            return client.navigate(targetUrl).catch(() => undefined);
+          }
+          return;
+        }
+      }
+
+      await self.clients.openWindow(targetUrl);
+    })(),
+  );
 });
