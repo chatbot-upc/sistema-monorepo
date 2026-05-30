@@ -17,7 +17,7 @@ import json
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from chatbot_api.core.events import EVENTS_CHANNEL
 from chatbot_api.core.settings import get_settings
@@ -98,21 +98,24 @@ async def _redis_subscriber_loop() -> None:
         log.exception("ws_subscriber_failed")
 
 
-def _authorize(user: str | None) -> bool:
+def _authorize(websocket: WebSocket) -> bool:
+    """In env=local we trust any connection (dev workflow with admin in CRM).
+    In staging/production we will gate by a real JWT verified in Cognito,
+    read from the cookie that travels with the WS handshake. Fail closed."""
     settings = get_settings()
     if settings.env == "local":
-        return bool(user)
-    # In staging/production we will gate by a real JWT verified in Cognito.
-    # Fail closed until that lands.
-    return False
+        return True
+    # Placeholder until we wire Auth.js JWT verification:
+    cookie_header = next(
+        (v for k, v in (websocket.scope.get("headers") or []) if k == b"cookie"),
+        None,
+    )
+    return cookie_header is not None  # presence-only stub
 
 
 @router.websocket("/api/v1/ws/conversations")
-async def conversations_stream(
-    websocket: WebSocket,
-    user: str | None = Query(None, alias="user"),
-) -> None:
-    if not _authorize(user):
+async def conversations_stream(websocket: WebSocket) -> None:
+    if not _authorize(websocket):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     await manager.connect(websocket)

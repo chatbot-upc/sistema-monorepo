@@ -25,9 +25,11 @@ const BACKOFF_MS = [500, 1000, 2000, 5000, 10000];
  * Subscribe to the realtime CRM event stream. Lives until unmount; reconnects
  * automatically with exponential backoff. `onEvent` runs for every event so
  * callers can update React state without re-rendering on every retry.
+ *
+ * Auth: in env=local the server accepts any connection. When Cognito JWT
+ * lands the cookie travels with the handshake automatically (same origin).
  */
 export function useConversationStream(
-  user: string,
   onEvent: (event: StreamEvent) => void,
 ): UseConversationStreamReturn {
   const [connected, setConnected] = useState(false);
@@ -50,10 +52,7 @@ export function useConversationStream(
 
     const connect = () => {
       if (stopped) return;
-      // Plain concatenation on purpose — `encodeURIComponent` turns "@" into
-      // "%40" and uvicorn's WS handshake rejects that combination with 400.
-      // The user value is a known-shape email so no other chars need escaping.
-      const url = `${wsUrlBase}/api/v1/ws/conversations?user=${user}`;
+      const url = `${wsUrlBase}/api/v1/ws/conversations`;
       ws = new WebSocket(url);
       ws.onopen = () => {
         attempt = 0;
@@ -89,7 +88,7 @@ export function useConversationStream(
         ws.close();
       }
     };
-  }, [user]);
+  }, []);
 
   return { connected, lastEvent };
 }

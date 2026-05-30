@@ -73,7 +73,7 @@ export function ConversationsClient({
     setConversations(initialConversations);
   }, [initialConversations]);
 
-  const { connected } = useConversationStream("dev@upc.edu.pe", (event) => {
+  const { connected } = useConversationStream((event) => {
     if (event.type === "message.created") {
       const msg = event.data as MessageRead;
       // Append to the open thread if it belongs to it.
