@@ -50,7 +50,10 @@ export function useConversationStream(
 
     const connect = () => {
       if (stopped) return;
-      const url = `${wsUrlBase}/api/v1/ws/conversations?user=${encodeURIComponent(user)}`;
+      // Plain concatenation on purpose — `encodeURIComponent` turns "@" into
+      // "%40" and uvicorn's WS handshake rejects that combination with 400.
+      // The user value is a known-shape email so no other chars need escaping.
+      const url = `${wsUrlBase}/api/v1/ws/conversations?user=${user}`;
       ws = new WebSocket(url);
       ws.onopen = () => {
         attempt = 0;
