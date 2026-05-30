@@ -19,15 +19,37 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from chatbot_api.core.settings import get_settings
 
+if TYPE_CHECKING:
+    from chatbot_api.models import Message
+
 log = structlog.get_logger()
 
 EVENTS_CHANNEL = "chatbot:events"
+
+
+def message_to_event_payload(msg: Message) -> dict[str, Any]:
+    """Flat shape the CRM consumes via WebSocket. Matches schemas.MessageRead
+    closely so the client can reuse the same renderer for fetch + stream paths.
+    Shared between the Celery worker (inbound/bot replies) and the
+    conversation_service (admin replies, takeover, close, reopen).
+    """
+    return {
+        "id": msg.id,
+        "conversation_id": msg.conversation_id,
+        "role": msg.role.value,
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+        "meta_message_id": msg.meta_message_id,
+        "intent_id": msg.intent_id,
+        "latency_ms": msg.latency_ms,
+        "admin_id": msg.admin_id,
+    }
 
 
 async def publish_event(event_type: str, data: dict[str, Any]) -> None:

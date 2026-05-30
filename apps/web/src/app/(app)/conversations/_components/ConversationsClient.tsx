@@ -10,6 +10,8 @@ import { Pill } from "@/components/ui/Pill";
 import { cn } from "@/lib/cn";
 import { useConversationStream } from "@/lib/use-conversation-stream";
 import { requestWsTicket } from "../_actions/ws-ticket";
+import { MessageComposer } from "./MessageComposer";
+import { ConversationActions } from "./ConversationActions";
 import type {
   ConversationDetail,
   ConversationListItem,
@@ -205,9 +207,12 @@ export function ConversationsClient({
               </div>
             </div>
           </div>
-          <Pill tone={STATUS_TONE[active.status]}>
-            {STATUS_LABEL[active.status]}
-          </Pill>
+          <div className="flex items-center gap-3">
+            <ConversationActions conversationId={active.id} status={active.status} />
+            <Pill tone={STATUS_TONE[active.status]}>
+              {STATUS_LABEL[active.status]}
+            </Pill>
+          </div>
         </header>
 
         <Card variant="flush" className="flex-1 overflow-hidden flex flex-col">
@@ -220,9 +225,7 @@ export function ConversationsClient({
               messages.map((m) => <Bubble key={m.id} msg={m} />)
             )}
           </div>
-          <footer className="border-t border-line px-6 py-3 text-[11px] text-muted-2">
-            La caja de texto para responder llega en SW-38 (Sprint 4).
-          </footer>
+          <MessageComposer conversationId={active.id} status={active.status} />
         </Card>
       </section>
 

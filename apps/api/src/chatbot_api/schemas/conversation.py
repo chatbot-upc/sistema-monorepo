@@ -1,10 +1,20 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from chatbot_api.models.enums import ConversationStatus
 
 from .message import MessageRead
+
+
+class SendMessageRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=4096)
+
+
+class SendMessageResponse(BaseModel):
+    message_id: int
+    meta_message_id: str | None
+    conversation_status: ConversationStatus
 
 
 class ConversationListItem(BaseModel):

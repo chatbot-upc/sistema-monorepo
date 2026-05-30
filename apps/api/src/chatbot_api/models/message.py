@@ -44,6 +44,11 @@ class Message(IdPk, Base):
     intent_used_fallback: Mapped[bool | None] = mapped_column(
         nullable=True,
     )
+    admin_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,

@@ -1,13 +1,18 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.api.dependencies import get_current_admin
 from chatbot_api.core.db import get_session
 from chatbot_api.models import Admin
 from chatbot_api.models.enums import ConversationStatus
-from chatbot_api.schemas.conversation import ConversationDetail, ConversationListItem
+from chatbot_api.schemas.conversation import (
+    ConversationDetail,
+    ConversationListItem,
+    SendMessageRequest,
+    SendMessageResponse,
+)
 from chatbot_api.schemas.message import MessageRead
 from chatbot_api.schemas.pagination import Page, PageParams
 from chatbot_api.services import conversation_service
@@ -59,27 +64,63 @@ async def list_messages(
 
 
 @router.post("/{conversation_id}/takeover")
-async def takeover(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
+async def takeover(
+    conversation_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    return await conversation_service.takeover(
+        db, conversation_id=conversation_id, admin_id=admin.id
+    )
 
 
 @router.post("/{conversation_id}/release")
-async def release(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
+async def release(
+    conversation_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    return await conversation_service.release(
+        db, conversation_id=conversation_id, admin_id=admin.id
+    )
 
 
 @router.post("/{conversation_id}/close")
-async def close(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
+async def close(
+    conversation_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    return await conversation_service.close(
+        db, conversation_id=conversation_id, admin_id=admin.id
+    )
 
 
 @router.post("/{conversation_id}/reopen")
-async def reopen(conversation_id: int, _: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
+async def reopen(
+    conversation_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    return await conversation_service.reopen(
+        db, conversation_id=conversation_id, admin_id=admin.id
+    )
 
 
-@router.post("/{conversation_id}/messages")
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=SendMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def send_message(
-    conversation_id: int, _: Admin = Depends(get_current_admin)
-) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 4")
+    conversation_id: int,
+    payload: SendMessageRequest,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> SendMessageResponse:
+    return await conversation_service.send_admin_message(
+        db,
+        conversation_id=conversation_id,
+        body=payload.body,
+        admin_id=admin.id,
+    )

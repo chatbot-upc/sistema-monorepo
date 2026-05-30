@@ -142,13 +142,6 @@ async def test_webhook_post_returns_200(
         get_settings.cache_clear()
 
 
-async def test_takeover_not_implemented(client: AsyncClient) -> None:
-    response = await client.post(
-        "/api/v1/conversations/1/takeover", headers=DEV_USER_HEADER
-    )
-    assert response.status_code == 501
-
-
 async def test_upload_document_requires_file(client: AsyncClient) -> None:
     """POST /documents está implementado (Fase 3) — sin file devuelve 422."""
     response = await client.post("/api/v1/documents", headers=DEV_USER_HEADER)

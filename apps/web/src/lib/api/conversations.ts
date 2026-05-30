@@ -93,3 +93,54 @@ export async function fetchMessages(
     },
   );
 }
+
+export interface SendMessageResponse {
+  message_id: number;
+  meta_message_id: string | null;
+  conversation_status: ConversationStatus;
+}
+
+export async function sendConversationMessage(
+  conversationId: number,
+  body: string,
+): Promise<SendMessageResponse> {
+  return apiFetch<SendMessageResponse>(
+    `/api/v1/conversations/${conversationId}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    },
+  );
+}
+
+export async function takeoverConversation(
+  conversationId: number,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/conversations/${conversationId}/takeover`, {
+    method: "POST",
+  });
+}
+
+export async function releaseConversation(
+  conversationId: number,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/conversations/${conversationId}/release`, {
+    method: "POST",
+  });
+}
+
+export async function closeConversation(
+  conversationId: number,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/conversations/${conversationId}/close`, {
+    method: "POST",
+  });
+}
+
+export async function reopenConversation(
+  conversationId: number,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/conversations/${conversationId}/reopen`, {
+    method: "POST",
+  });
+}

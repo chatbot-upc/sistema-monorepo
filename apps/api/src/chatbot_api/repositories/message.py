@@ -105,6 +105,26 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         await db.flush()
         return msg
 
+    async def create_admin_message(
+        self,
+        db: AsyncSession,
+        *,
+        conversation_id: int,
+        content: str,
+        admin_id: int,
+        meta_message_id: str | None = None,
+    ) -> Message:
+        msg = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.admin,
+            content=content,
+            admin_id=admin_id,
+            meta_message_id=meta_message_id,
+        )
+        db.add(msg)
+        await db.flush()
+        return msg
+
     async def create_bot(
         self,
         db: AsyncSession,

@@ -22,7 +22,7 @@ import structlog
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from chatbot_api.core.celery_app import celery_app
-from chatbot_api.core.events import publish_event
+from chatbot_api.core.events import message_to_event_payload, publish_event
 from chatbot_api.core.settings import get_settings
 from chatbot_api.models import ConversationIntent, Message
 from chatbot_api.models.enums import ConversationStatus, MessageRole
@@ -148,22 +148,6 @@ async def _send_escalation_side_effects(
         )
 
 
-def _message_to_event_payload(msg: Message) -> dict[str, Any]:
-    """Flat shape the CRM consumes via WebSocket. Matches schemas.MessageRead
-    closely so the client can reuse the same renderer for fetch + stream paths.
-    """
-    return {
-        "id": msg.id,
-        "conversation_id": msg.conversation_id,
-        "role": msg.role.value,
-        "content": msg.content,
-        "created_at": msg.created_at.isoformat() if msg.created_at else None,
-        "meta_message_id": msg.meta_message_id,
-        "intent_id": msg.intent_id,
-        "latency_ms": msg.latency_ms,
-    }
-
-
 def _to_chat_history(messages: list[Message]) -> list[dict[str, str]]:
     """Map DB messages to LangChain chat format. Skip empty content.
 
@@ -209,7 +193,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 return
             await db.commit()
             await publish_event(
-                "message.created", _message_to_event_payload(inbound)
+                "message.created", message_to_event_payload(inbound)
             )
             log.info(
                 "inbound_persisted",
@@ -315,7 +299,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 )
                 await db.commit()
                 await publish_event(
-                    "message.created", _message_to_event_payload(welcome_msg)
+                    "message.created", message_to_event_payload(welcome_msg)
                 )
                 log.info(
                     "welcome_sent",
@@ -419,7 +403,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
 
             await db.commit()
             await publish_event(
-                "message.created", _message_to_event_payload(bot_msg)
+                "message.created", message_to_event_payload(bot_msg)
             )
             if escalation is not None:
                 await publish_event(
