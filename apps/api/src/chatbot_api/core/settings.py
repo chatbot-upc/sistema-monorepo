@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
+    openai_vision_model: str = "gpt-4o-mini"
 
     local_uploads_dir: Path = Path("./uploads")
 
@@ -51,6 +52,9 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5
     rag_fetch_k: int = 20
+    rag_ocr_enabled: bool = True
+    rag_ocr_threshold: int = 50
+    rag_ocr_dpi: int = 200
 
     intent_sbert_threshold: float = 0.55
 

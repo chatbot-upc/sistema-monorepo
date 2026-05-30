@@ -47,36 +47,45 @@ async def _ingest_async(document_id: int) -> None:
                 tmp.write(content)
                 tmp_path = Path(tmp.name)
 
-            lc_docs = load_by_extension(tmp_path)
-            splits = get_splitter().split_documents(lc_docs)
-            texts = [s.page_content for s in splits]
+            try:
+                lc_docs = await load_by_extension(tmp_path)
+                splits = get_splitter().split_documents(lc_docs)
+                texts = [s.page_content for s in splits]
+                ocr_chunks = sum(
+                    1 for s in splits if s.metadata.get("source") == "ocr"
+                )
 
-            if not texts:
-                doc.status = DocumentStatus.error
-                doc.error_message = "no text extracted"
+                if not texts:
+                    doc.status = DocumentStatus.error
+                    doc.error_message = "no text extracted"
+                    await db.commit()
+                    log.warning("ingest_empty", document_id=document_id)
+                    return
+
+                vectors = await get_embeddings().aembed_documents(texts)
+
+                chunks_data = [
+                    {
+                        "chunk_text": s.page_content,
+                        "embedding": vec,
+                        "meta": s.metadata,
+                        "chunk_index": i,
+                    }
+                    for i, (s, vec) in enumerate(zip(splits, vectors, strict=True))
+                ]
+                await document_chunk_repository.bulk_insert(db, doc.id, chunks_data)
+
+                doc.status = DocumentStatus.indexed
+                doc.indexed_at = datetime.now()
                 await db.commit()
+                log.info(
+                    "ingest_completed",
+                    document_id=document_id,
+                    chunks=len(splits),
+                    ocr_chunks=ocr_chunks,
+                )
+            finally:
                 tmp_path.unlink(missing_ok=True)
-                log.warning("ingest_empty", document_id=document_id)
-                return
-
-            vectors = await get_embeddings().aembed_documents(texts)
-
-            chunks_data = [
-                {
-                    "chunk_text": s.page_content,
-                    "embedding": vec,
-                    "meta": s.metadata,
-                    "chunk_index": i,
-                }
-                for i, (s, vec) in enumerate(zip(splits, vectors, strict=True))
-            ]
-            await document_chunk_repository.bulk_insert(db, doc.id, chunks_data)
-
-            doc.status = DocumentStatus.indexed
-            doc.indexed_at = datetime.now()
-            await db.commit()
-            tmp_path.unlink(missing_ok=True)
-            log.info("ingest_completed", document_id=document_id, chunks=len(splits))
         except Exception as exc:
             doc.status = DocumentStatus.error
             doc.error_message = str(exc)[:500]
