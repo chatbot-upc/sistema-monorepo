@@ -42,6 +42,11 @@ class Settings(BaseSettings):
 
     local_uploads_dir: Path = Path("./uploads")
 
+    aws_region: str = "us-east-1"
+    aws_s3_bucket: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5
