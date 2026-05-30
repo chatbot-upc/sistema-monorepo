@@ -1,5 +1,6 @@
 """Auth service — bridge to AWS Cognito via boto3."""
 
+import secrets
 from typing import Any
 
 import boto3
@@ -9,6 +10,9 @@ from fastapi import HTTPException, status
 from chatbot_api.core.settings import get_settings
 
 _client: Any | None = None
+
+_WS_TICKET_TTL_SECONDS = 60
+_WS_TICKET_PREFIX = "chatbot:ws-ticket:"
 
 
 def _get_client() -> Any:
@@ -90,3 +94,49 @@ async def refresh(*, refresh_token: str) -> dict[str, Any]:
         "id_token": auth["IdToken"],
         "expires_in": auth["ExpiresIn"],
     }
+
+
+async def issue_ws_ticket(admin_id: int) -> dict[str, Any]:
+    """One-shot ticket for the WebSocket handshake (SW-36/37 realtime).
+
+    Browsers can't set Authorization headers on `new WebSocket(...)`, so we
+    trade the admin's Bearer JWT for a short-lived opaque ticket they put on
+    the WS query string. The ticket lives in Redis with a 60s TTL and is
+    consumed (deleted) on first use to defeat replay.
+    """
+    settings = get_settings()
+    ticket = secrets.token_urlsafe(24)
+    from redis.asyncio import Redis
+
+    client = Redis.from_url(settings.redis_url)
+    try:
+        await client.set(
+            f"{_WS_TICKET_PREFIX}{ticket}",
+            str(admin_id),
+            ex=_WS_TICKET_TTL_SECONDS,
+        )
+    finally:
+        await client.aclose()
+    return {"ticket": ticket, "expires_in": _WS_TICKET_TTL_SECONDS}
+
+
+async def consume_ws_ticket(ticket: str) -> int | None:
+    """Atomically read+delete a ticket. Returns admin_id or None if invalid."""
+    if not ticket:
+        return None
+    settings = get_settings()
+    from redis.asyncio import Redis
+
+    client = Redis.from_url(settings.redis_url)
+    try:
+        key = f"{_WS_TICKET_PREFIX}{ticket}"
+        # GETDEL is atomic — no race where two clients consume the same ticket.
+        raw = await client.getdel(key)
+    finally:
+        await client.aclose()
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None

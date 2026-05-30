@@ -40,3 +40,17 @@ async def refresh(req: RefreshRequest) -> TokenRefreshResponse:
 @router.get("/me", response_model=AdminRead)
 async def me(admin: Admin = Depends(get_current_admin)) -> AdminRead:
     return AdminRead.model_validate(admin)
+
+
+@router.post("/ws-ticket")
+async def issue_ws_ticket(
+    admin: Admin = Depends(get_current_admin),
+) -> dict[str, int | str]:
+    """Mint a short-lived ticket the CRM uses to open the realtime WebSocket.
+
+    Browsers can't set Authorization headers on `new WebSocket(...)`; the
+    Server Action calls this endpoint with the admin's Bearer JWT and hands
+    the resulting ticket to the client. The ticket is consumed on first use
+    and expires in 60s, so it stays out of long-lived JS state.
+    """
+    return await auth_service.issue_ws_ticket(admin.id)

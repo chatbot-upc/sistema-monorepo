@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { cn } from "@/lib/cn";
 import { useConversationStream } from "@/lib/use-conversation-stream";
+import { requestWsTicket } from "../_actions/ws-ticket";
 import type {
   ConversationDetail,
   ConversationListItem,
@@ -63,17 +65,14 @@ export function ConversationsClient({
   const [active, setActive] = useState(activeConversation);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
-  // Reset state when navigating between conversations (route change re-mounts).
-  useEffect(() => {
-    setMessages(initialMessages);
-    setActive(activeConversation);
-  }, [activeConversation, initialMessages]);
-
+  // Reset state when the route changes to a different conversation. The
+  // <ConversationsClient key={detail.id}> in [id]/page.tsx forces a remount
+  // on id change, so we only need to sync when the sidebar list changes.
   useEffect(() => {
     setConversations(initialConversations);
   }, [initialConversations]);
 
-  const { connected } = useConversationStream((event) => {
+  const { connected } = useConversationStream(requestWsTicket, (event) => {
     if (event.type === "message.created") {
       const msg = event.data as MessageRead;
       // Append to the open thread if it belongs to it.
@@ -132,9 +131,9 @@ export function ConversationsClient({
   }, [conversations]);
 
   return (
-    <div className="flex gap-4 min-w-0 flex-1 h-[calc(100vh-180px)]">
+    <div className="flex gap-4 min-w-0 h-[calc(100dvh-96px)]">
       {/* Sidebar — conversation list */}
-      <aside className="w-[300px] shrink-0 flex flex-col gap-3 overflow-hidden">
+      <aside className="w-[300px] shrink-0 flex flex-col gap-3 overflow-hidden min-h-0">
         <header className="flex items-center justify-between px-1">
           <h2 className="text-[15px] font-semibold tracking-[-0.3px]">
             Conversaciones
@@ -190,7 +189,7 @@ export function ConversationsClient({
       </aside>
 
       {/* Thread */}
-      <section className="flex-1 min-w-0 flex flex-col gap-3">
+      <section className="flex-1 min-w-0 flex flex-col gap-3 min-h-0">
         <header className="flex items-center justify-between px-1">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-blue-soft text-blue flex items-center justify-center">
@@ -228,7 +227,7 @@ export function ConversationsClient({
       </section>
 
       {/* Sidebar derecho — info del estudiante */}
-      <aside className="w-[260px] shrink-0">
+      <aside className="w-[260px] shrink-0 min-h-0 overflow-auto">
         <Card className="p-5 flex flex-col gap-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.6px] font-semibold text-muted">

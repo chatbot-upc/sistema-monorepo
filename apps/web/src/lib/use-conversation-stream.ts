@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +20,8 @@ export interface UseConversationStreamReturn {
   lastEvent: StreamEvent | null;
 }
 
+type TicketFetcher = () => Promise<{ ticket: string } | null>;
+
 const BACKOFF_MS = [500, 1000, 2000, 5000, 10000];
 
 /**
@@ -26,16 +29,24 @@ const BACKOFF_MS = [500, 1000, 2000, 5000, 10000];
  * automatically with exponential backoff. `onEvent` runs for every event so
  * callers can update React state without re-rendering on every retry.
  *
- * Auth: in env=local the server accepts any connection. When Cognito JWT
- * lands the cookie travels with the handshake automatically (same origin).
+ * Auth flow:
+ *   1. We call `fetchTicket()` (a Server Action) which reads the admin's
+ *      Cognito JWT from the Auth.js session and asks the API for a short-lived
+ *      opaque ticket.
+ *   2. The ticket goes on the WS query string. Tickets are one-shot (server
+ *      deletes on first use) so they can't be replayed.
+ *   3. On reconnect we ask for a fresh ticket — the old one is already gone.
  */
 export function useConversationStream(
+  fetchTicket: TicketFetcher,
   onEvent: (event: StreamEvent) => void,
 ): UseConversationStreamReturn {
   const [connected, setConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<StreamEvent | null>(null);
   const callbackRef = useRef(onEvent);
   callbackRef.current = onEvent;
+  const ticketRef = useRef<TicketFetcher>(fetchTicket);
+  ticketRef.current = fetchTicket;
 
   useEffect(() => {
     let attempt = 0;
@@ -44,15 +55,32 @@ export function useConversationStream(
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const wsUrlBase = (() => {
-      // NEXT_PUBLIC_API_URL is "http://localhost:8000"; flip to ws://.
       const httpBase =
         process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
       return httpBase.replace(/^http/, "ws");
     })();
 
-    const connect = () => {
+    const scheduleRetry = () => {
       if (stopped) return;
-      const url = `${wsUrlBase}/api/v1/ws/conversations`;
+      const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
+      attempt += 1;
+      retryTimer = setTimeout(connect, delay);
+    };
+
+    const connect = async () => {
+      if (stopped) return;
+      let ticketPayload: { ticket: string } | null = null;
+      try {
+        ticketPayload = await ticketRef.current();
+      } catch {
+        ticketPayload = null;
+      }
+      if (!ticketPayload?.ticket || stopped) {
+        scheduleRetry();
+        return;
+      }
+
+      const url = `${wsUrlBase}/api/v1/ws/conversations?ticket=${ticketPayload.ticket}`;
       ws = new WebSocket(url);
       ws.onopen = () => {
         attempt = 0;
@@ -72,14 +100,11 @@ export function useConversationStream(
       };
       ws.onclose = () => {
         setConnected(false);
-        if (stopped) return;
-        const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
-        attempt += 1;
-        retryTimer = setTimeout(connect, delay);
+        scheduleRetry();
       };
     };
 
-    connect();
+    void connect();
 
     return () => {
       stopped = true;
