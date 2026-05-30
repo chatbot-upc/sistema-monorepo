@@ -1,22 +1,39 @@
 import { notFound } from "next/navigation";
-import { ConvList } from "@/components/conversations/ConvList";
-import { Thread } from "@/components/conversations/Thread";
-import { ContactInfo } from "@/components/conversations/ContactInfo";
-import { conversations } from "@/lib/mock";
+import {
+  fetchConversation,
+  fetchConversations,
+  fetchMessages,
+  type ConversationDetail,
+  type ConversationListItem,
+  type MessageRead,
+} from "@/lib/api/conversations";
+import { ConversationsClient } from "../_components/ConversationsClient";
+
+export const dynamic = "force-dynamic";
 
 export default async function ConversationDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await props.params;
-  const exists =
-    conversations.some((c) => c.id === id) || id.startsWith("nv-");
-  if (!exists) notFound();
+  const conversationId = Number.parseInt(id, 10);
+  if (!Number.isFinite(conversationId) || conversationId <= 0) {
+    notFound();
+  }
+
+  // Parallel fetch: list (sidebar) + detail + messages.
+  const [listPage, detail, messagesPage] = await Promise.all([
+    fetchConversations({ size: 50 }),
+    fetchConversation(conversationId).catch(() => null),
+    fetchMessages(conversationId).catch(() => null),
+  ]);
+
+  if (!detail || !messagesPage) notFound();
 
   return (
-    <div className="flex gap-4 min-w-0 flex-1 h-[calc(100vh-180px)]">
-      <ConvList activeId={id} />
-      <Thread conversationId={id} />
-      <ContactInfo conversationId={id} />
-    </div>
+    <ConversationsClient
+      conversations={listPage.items as ConversationListItem[]}
+      activeConversation={detail as ConversationDetail}
+      activeMessages={messagesPage.items as MessageRead[]}
+    />
   );
 }

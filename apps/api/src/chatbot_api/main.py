@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api.v1.router import api_v1_router
 from .api.webhooks import router as webhooks_router
+from .api.ws.conversations import router as ws_router
 from .core.db import get_session
 from .core.lifespan import lifespan
 from .core.settings import get_settings
@@ -33,6 +34,7 @@ app.add_middleware(CorrelationMiddleware)
 
 app.include_router(webhooks_router)
 app.include_router(api_v1_router)
+app.include_router(ws_router)
 
 
 @app.get("/health", response_model=HealthResponse)
