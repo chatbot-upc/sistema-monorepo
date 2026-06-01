@@ -19,7 +19,7 @@ from chatbot_api.schemas.conversation import (
 )
 from chatbot_api.schemas.message import MessageRead
 from chatbot_api.schemas.pagination import Page, PageParams
-from chatbot_api.services import whatsapp_service
+from chatbot_api.services import conversation_history_service, whatsapp_service
 
 log = structlog.get_logger()
 
@@ -150,6 +150,9 @@ async def send_admin_message(
     await db.commit()
     await db.refresh(msg)
 
+    await conversation_history_service.append(
+        conversation_id=conv.id, messages=[msg]
+    )
     await publish_event("message.created", message_to_event_payload(msg))
     if auto_takeover:
         await publish_event(

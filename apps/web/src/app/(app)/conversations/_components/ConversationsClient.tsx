@@ -84,12 +84,13 @@ export function ConversationsClient({
         );
       }
       // Patch the sidebar preview + ordering.
+      let isUnknownConversation = false;
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === msg.conversation_id);
         if (idx === -1) {
-          // New conversation — let the server-side fetch on next navigation
-          // pick it up. A focused refresh would also work; skip for now.
-          router.refresh();
+          // New conversation — refresh server data outside this setter to
+          // avoid triggering Router setState during render.
+          isUnknownConversation = true;
           return prev;
         }
         const next = [...prev];
@@ -101,6 +102,9 @@ export function ConversationsClient({
         };
         return next;
       });
+      if (isUnknownConversation) {
+        router.refresh();
+      }
     } else if (event.type === "conversation.status_changed") {
       const data = event.data as {
         conversation_id: number;

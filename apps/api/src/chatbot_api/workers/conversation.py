@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,13 +24,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from chatbot_api.core.celery_app import celery_app
 from chatbot_api.core.events import message_to_event_payload, publish_event
 from chatbot_api.core.settings import get_settings
-from chatbot_api.models import ConversationIntent, Message
-from chatbot_api.models.enums import ConversationStatus, MessageRole
+from chatbot_api.models import ConversationIntent
+from chatbot_api.models.enums import ConversationStatus
 from chatbot_api.repositories.conversation import conversation_repository
 from chatbot_api.repositories.message import message_repository
 from chatbot_api.repositories.student import student_repository
 from chatbot_api.schemas.whatsapp import ParsedInboundMessage
 from chatbot_api.services import (
+    conversation_history_service,
     intent_classifier_service,
     push_service,
     rag_service,
@@ -66,8 +67,6 @@ def _make_session_factory() -> async_sessionmaker[Any]:
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
-_HISTORY_WINDOW_HOURS = 24
-_HISTORY_LIMIT = 20
 _PUSH_BODY_LIMIT = 140
 
 
@@ -110,6 +109,7 @@ async def _send_escalation_side_effects(
                 content=notice,
                 meta_message_id=meta_id,
             )
+            # Notice canned tampoco entra al cache (mismo motivo que welcome).
             log.info(
                 "escalation_notice_sent",
                 correlation_id=correlation_id,
@@ -148,20 +148,6 @@ async def _send_escalation_side_effects(
         )
 
 
-def _to_chat_history(messages: list[Message]) -> list[dict[str, str]]:
-    """Map DB messages to LangChain chat format. Skip empty content.
-
-    student → user · bot/admin → assistant (admin handles takeover continuity).
-    """
-    history: list[dict[str, str]] = []
-    for m in messages:
-        if not m.content:
-            continue
-        role = "user" if m.role == MessageRole.student else "assistant"
-        history.append({"role": role, "content": m.content})
-    return history
-
-
 async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> None:
     parsed = ParsedInboundMessage.model_validate(parsed_dict)
     settings = get_settings()
@@ -177,6 +163,12 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
             conv, conv_created = await conversation_repository.get_or_create_open(
                 db, parsed.from_phone
             )
+            if conv_created:
+                # Conv brand-new: limpiar cualquier cache stale de una posible
+                # encarnación previa con el mismo id (DB reset, etc.) para
+                # evitar contaminar el contexto del RAG.
+                await conversation_history_service.clear(conv.id)
+
             inbound = await message_repository.create_inbound(
                 db,
                 conversation_id=conv.id,
@@ -298,6 +290,8 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     meta_message_id=welcome_meta_id,
                 )
                 await db.commit()
+                # Welcome NO entra al cache: es scaffolding (saludo canned),
+                # no aporta contexto útil al RAG en turnos futuros.
                 await publish_event(
                     "message.created", message_to_event_payload(welcome_msg)
                 )
@@ -309,15 +303,11 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     meta_message_id=welcome_meta_id,
                 )
 
-            since = datetime.now() - timedelta(hours=_HISTORY_WINDOW_HOURS)
-            recent_msgs = await message_repository.list_recent_for_conversation(
+            history = await conversation_history_service.get(
                 db,
                 conversation_id=conv.id,
-                since=since,
-                exclude_after_id=inbound.id,
-                limit=_HISTORY_LIMIT,
+                exclude_message_id=inbound.id,
             )
-            history = _to_chat_history(recent_msgs)
             log.info(
                 "history_loaded",
                 correlation_id=correlation_id,
@@ -402,6 +392,9 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 )
 
             await db.commit()
+            await conversation_history_service.append(
+                conversation_id=conv.id, messages=[inbound, bot_msg]
+            )
             await publish_event(
                 "message.created", message_to_event_payload(bot_msg)
             )

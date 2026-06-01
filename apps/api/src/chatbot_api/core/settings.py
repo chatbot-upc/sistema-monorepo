@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     rag_ocr_threshold: int = 50
     rag_ocr_dpi: int = 200
 
+    history_cache_enabled: bool = True
+    history_cache_ttl_seconds: int = 86400
+    history_cache_max_messages: int = 20
+
     intent_sbert_threshold: float = 0.55
 
     celery_broker_url: str = "redis://localhost:6379/1"

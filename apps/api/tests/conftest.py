@@ -15,6 +15,18 @@ from testcontainers.postgres import PostgresContainer
 API_DIR = Path(__file__).parent.parent
 
 
+@pytest.fixture(autouse=True)
+def _disable_history_cache_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SW-26 cache: off por defecto en tests para evitar leakage cross-run.
+
+    Los tests específicos del cache (test_sw26_*) lo re-activan en su fixture.
+    """
+    monkeypatch.setenv("HISTORY_CACHE_ENABLED", "false")
+    from chatbot_api.core.settings import get_settings
+
+    get_settings.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def postgres_url() -> Iterator[str]:
     with PostgresContainer("pgvector/pgvector:pg16", driver="asyncpg") as container:
