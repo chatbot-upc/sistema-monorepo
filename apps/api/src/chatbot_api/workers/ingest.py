@@ -10,6 +10,7 @@ import structlog
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from chatbot_api.core.celery_app import celery_app
+from chatbot_api.core.events import publish_event
 from chatbot_api.core.settings import get_settings
 from chatbot_api.core.storage import get_storage
 from chatbot_api.models import Document
@@ -40,6 +41,10 @@ async def _ingest_async(document_id: int) -> None:
         try:
             doc.status = DocumentStatus.indexing
             await db.commit()
+            await publish_event(
+                "document.status_changed",
+                {"document_id": doc.id, "status": DocumentStatus.indexing.value},
+            )
 
             content = await get_storage().get(doc.s3_key)
             suffix = Path(doc.s3_key).suffix or ".pdf"
@@ -59,6 +64,14 @@ async def _ingest_async(document_id: int) -> None:
                     doc.status = DocumentStatus.error
                     doc.error_message = "no text extracted"
                     await db.commit()
+                    await publish_event(
+                        "document.status_changed",
+                        {
+                            "document_id": doc.id,
+                            "status": DocumentStatus.error.value,
+                            "error_message": doc.error_message,
+                        },
+                    )
                     log.warning("ingest_empty", document_id=document_id)
                     return
 
@@ -78,6 +91,15 @@ async def _ingest_async(document_id: int) -> None:
                 doc.status = DocumentStatus.indexed
                 doc.indexed_at = datetime.now()
                 await db.commit()
+                await publish_event(
+                    "document.status_changed",
+                    {
+                        "document_id": doc.id,
+                        "status": DocumentStatus.indexed.value,
+                        "indexed_at": doc.indexed_at.isoformat(),
+                        "chunk_count": len(splits),
+                    },
+                )
                 log.info(
                     "ingest_completed",
                     document_id=document_id,
@@ -90,6 +112,14 @@ async def _ingest_async(document_id: int) -> None:
             doc.status = DocumentStatus.error
             doc.error_message = str(exc)[:500]
             await db.commit()
+            await publish_event(
+                "document.status_changed",
+                {
+                    "document_id": doc.id,
+                    "status": DocumentStatus.error.value,
+                    "error_message": doc.error_message,
+                },
+            )
             log.exception("ingest_failed", document_id=document_id)
             raise
 

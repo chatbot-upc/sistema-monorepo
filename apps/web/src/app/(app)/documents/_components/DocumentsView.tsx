@@ -1,18 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/ToastProvider";
-import type { DocumentRead, DocumentSummary } from "@/lib/api/documents";
+import { useConversationStream } from "@/lib/use-conversation-stream";
+import type { DocumentRead, DocumentStatus, DocumentSummary } from "@/lib/api/documents";
 import { deleteDocumentAction } from "../_actions/documents";
+import { requestWsTicket } from "../../conversations/_actions/ws-ticket";
 import { DocumentsStats } from "./DocumentsStats";
 import { DocumentsToolbar } from "./DocumentsToolbar";
 import { DocumentsTable } from "./DocumentsTable";
 import { UploadDrawer } from "./UploadDrawer";
 import { useDocumentFilters } from "./useDocumentFilters";
+
+type DocPatch = Partial<
+  Pick<DocumentRead, "status" | "error_message" | "indexed_at" | "chunk_count">
+>;
+
+interface DocStatusEvent {
+  document_id: number;
+  status: DocumentStatus;
+  indexed_at?: string;
+  chunk_count?: number;
+  error_message?: string;
+}
 
 interface DocumentsViewProps {
   documents: DocumentRead[];
@@ -23,19 +37,84 @@ interface DocumentsViewProps {
 }
 
 export function DocumentsView({
-  documents,
+  documents: initialDocuments,
   currentPage,
   totalPages,
   total,
   summary,
 }: DocumentsViewProps) {
   const { toast } = useToast();
-  const filters = useDocumentFilters(documents);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<DocumentRead | null>(null);
 
-  // Stats reflect the full catalog (from /documents/summary), not the page.
-  const { indexed, indexing, total_chunks: totalChunks } = summary;
+  // Patches vivos provenientes del WebSocket; se aplican EN RENDER sobre los
+  // datos del server. Sobreviven a router.refresh() hasta que el server-side
+  // ya refleja el cambio. No usamos useEffect para sincronizar prop→state
+  // (Vercel: rerender-derived-state-no-effect).
+  const [patches, setPatches] = useState<Map<number, DocPatch>>(new Map());
+
+  // Lista visible: patchea cada doc con su entry de WS (Map.get O(1)).
+  const documents = useMemo(
+    () =>
+      initialDocuments.map((doc) => {
+        const patch = patches.get(doc.id);
+        return patch ? { ...doc, ...patch } : doc;
+      }),
+    [initialDocuments, patches],
+  );
+
+  // Stats delta: reduce funcional puro (sin mutación) sobre los patches.
+  // Index Map para lookup O(1) de docs por id (Vercel: js-set-map-lookups).
+  const statsAdjustment = useMemo(() => {
+    const docsById = new Map(initialDocuments.map((d) => [d.id, d]));
+    return Array.from(patches.entries()).reduce(
+      (acc, [docId, patch]) => {
+        const doc = docsById.get(docId);
+        if (!doc) return acc;
+        const newStatus = patch.status ?? doc.status;
+        const indexedAdj =
+          (newStatus === "indexed" ? 1 : 0) -
+          (doc.status === "indexed" ? 1 : 0);
+        const indexingAdj =
+          (newStatus === "indexing" ? 1 : 0) -
+          (doc.status === "indexing" ? 1 : 0);
+        const chunkAdj =
+          patch.chunk_count !== undefined &&
+          patch.chunk_count !== doc.chunk_count
+            ? patch.chunk_count - doc.chunk_count
+            : 0;
+        return {
+          indexedDelta: acc.indexedDelta + indexedAdj,
+          indexingDelta: acc.indexingDelta + indexingAdj,
+          chunksDelta: acc.chunksDelta + chunkAdj,
+        };
+      },
+      { indexedDelta: 0, indexingDelta: 0, chunksDelta: 0 },
+    );
+  }, [initialDocuments, patches]);
+
+  const filters = useDocumentFilters(documents);
+
+  useConversationStream(requestWsTicket, (event) => {
+    if (event.type !== "document.status_changed") return;
+    const data = event.data as DocStatusEvent;
+    setPatches((prev) => {
+      const next = new Map(prev);
+      next.set(data.document_id, {
+        status: data.status,
+        error_message: data.error_message,
+        indexed_at: data.indexed_at,
+        chunk_count: data.chunk_count,
+      });
+      return next;
+    });
+  });
+
+  // Stats vivas: catálogo completo del server + delta calculado en el useMemo
+  // de arriba a partir de las transiciones observadas por WebSocket.
+  const indexed = summary.indexed + statsAdjustment.indexedDelta;
+  const indexing = summary.indexing + statsAdjustment.indexingDelta;
+  const totalChunks = summary.total_chunks + statsAdjustment.chunksDelta;
 
   return (
     <div className="flex flex-col gap-5">

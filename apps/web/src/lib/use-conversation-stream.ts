@@ -7,7 +7,8 @@ export type StreamEventType =
   | "hello"
   | "message.created"
   | "conversation.escalated"
-  | "conversation.status_changed";
+  | "conversation.status_changed"
+  | "document.status_changed";
 
 export interface StreamEvent<T = unknown> {
   type: StreamEventType;

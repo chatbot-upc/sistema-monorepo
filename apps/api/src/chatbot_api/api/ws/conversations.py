@@ -52,8 +52,10 @@ class ConnectionManager:
             try:
                 await ws.send_text(payload)
             except Exception:
+                log.exception("ws_broadcast_send_failed")
                 dead.append(ws)
         if dead:
+            log.warning("ws_broadcast_dead_dropped", dead=len(dead))
             async with self._lock:
                 for ws in dead:
                     self._clients.discard(ws)
