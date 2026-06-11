@@ -151,6 +151,11 @@ async def test_dashboard_stats(client: AsyncClient, db_session: AsyncSession) ->
         student_phone=student.phone_e164,
         status=ConversationStatus.abierta,
     )
+    await factories.make_conversation(
+        db_session,
+        student_phone=student.phone_e164,
+        status=ConversationStatus.takeover,
+    )
     await factories.make_document(
         db_session, sha256="d" * 64, status=DocumentStatus.indexed
     )
@@ -161,8 +166,44 @@ async def test_dashboard_stats(client: AsyncClient, db_session: AsyncSession) ->
     assert response.status_code == 200
     body = response.json()
     assert body["conversations_open"] >= 1
+    assert body["conversations_active"] >= 1
+    assert body["conversations_escalated"] >= 1
     assert body["documents_indexed"] >= 1
     assert body["intents_active"] >= 3  # seed
+    # Campos KPI nuevos presentes (pueden ser 0/None sin actividad de intents)
+    assert "top_intent" in body
+    assert "avg_confidence" in body
+    assert "avg_latency_ms" in body
+
+
+async def test_dashboard_top_intent_and_confidence(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Con ConversationIntent sembrado hoy, top_intent y certeza se calculan."""
+    from chatbot_api.models import ConversationIntent
+
+    student = await factories.make_student(db_session, phone="+51900100050")
+    conv = await factories.make_conversation(
+        db_session, student_phone=student.phone_e164
+    )
+    intent = await factories.make_intent(db_session, name="kpi_test_intent")
+    db_session.add(
+        ConversationIntent(
+            conversation_id=conv.id,
+            intent_id=intent.id,
+            confidence=0.9,
+        )
+    )
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/v1/reports/dashboard", headers=DEV_USER_HEADER
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["top_intent"] is not None
+    assert body["top_intent"]["count"] >= 1
+    assert body["avg_confidence"] > 0
 
 
 async def test_reports_conversations_by_day(

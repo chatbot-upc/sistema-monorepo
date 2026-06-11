@@ -16,7 +16,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 async def dashboard(
     _: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_session),
-) -> dict[str, int]:
+) -> dict[str, Any]:
     return await report_service.get_dashboard_stats(db)
 
 

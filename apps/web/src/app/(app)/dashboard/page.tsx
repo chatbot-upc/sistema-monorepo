@@ -2,12 +2,11 @@ import {
   MessageSquare,
   AlertCircle,
   Zap,
-  DollarSign,
   TrendingUp,
-  TrendingDown,
   ArrowUpRight,
   FileText,
   Plus,
+  Gauge,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
@@ -15,60 +14,123 @@ import { LinkIconButton } from "@/components/ui/LinkIconButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { MiniBars } from "@/components/charts/MiniBars";
 import { BigBars } from "@/components/charts/BigBars";
-import { topIntents } from "@/lib/mock";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import {
+  fetchConversationsByDay,
+  fetchDashboard,
+  fetchIntentDistribution,
+} from "@/lib/api/reports";
+import { fetchConversations } from "@/lib/api/conversations";
 
-export default function DashboardPage() {
-  const convHeights = [50, 55, 48, 65, 75, 88, 100, 92, 80, 68, 74, 62, 58, 65];
-  const latHeights = [50, 62, 54, 78, 65, 90, 72, 60];
+type BarColor = "primary" | "coral" | "amber" | "violet" | "blue" | "mint";
+const BAR_COLORS: BarColor[] = ["coral", "amber", "primary", "violet", "blue"];
+const AVATAR_GRADIENTS = ["amber", "coral", "violet", "mint", "blue", "rose"] as const;
+
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Normaliza una lista de conteos a alturas 0-100 para MiniBars. */
+function toHeights(counts: number[]): number[] {
+  const max = Math.max(...counts, 1);
+  return counts.map((c) => Math.round((c / max) * 100));
+}
+
+/** Alinea los conteos por día a una ventana fija de `len` días (rellena con 0). */
+function padToWindow(rows: { date: string; count: number }[], len: number): number[] {
+  const byDate = new Map(rows.map((r) => [r.date, r.count]));
+  const out: number[] = [];
+  for (let i = len - 1; i >= 0; i--) {
+    out.push(byDate.get(isoDaysAgo(i)) ?? 0);
+  }
+  return out;
+}
+
+function initialsOf(name: string | null, phone: string): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+  }
+  return phone.slice(-2);
+}
+
+export default async function DashboardPage() {
+  const [stats, convByDay, intents, escalatedQueue] = await Promise.all([
+    fetchDashboard(),
+    fetchConversationsByDay(isoDaysAgo(6), isoToday()),
+    fetchIntentDistribution(isoDaysAgo(29), isoToday()),
+    fetchConversations({ status: "takeover", size: 8 }),
+  ]);
+
+  const convCounts = padToWindow(convByDay, 7);
+  const convTotal7d = convCounts.reduce((a, b) => a + b, 0);
+  const convHeights = toHeights(convCounts);
+
+  const topIntents = intents.slice(0, 5).map((it, i) => ({
+    name: it.intent_name,
+    value: it.count,
+    color: BAR_COLORS[i % BAR_COLORS.length],
+  }));
+  const intentYMax = Math.max(...topIntents.map((t) => t.value), 1);
+  const intentTotal = intents.reduce((a, b) => a + b.count, 0);
+
+  const certezaPct =
+    stats.avg_confidence > 0 ? `${(stats.avg_confidence * 100).toFixed(1)}%` : "—";
+  const latencia =
+    stats.avg_latency_ms != null
+      ? `${(stats.avg_latency_ms / 1000).toFixed(2)}s`
+      : "—";
 
   return (
     <div className="flex flex-col gap-5 min-w-0">
       <DashboardHeader />
 
-      {/* Stat cards */}
+      {/* KPIs de la HU: activas, escaladas, tema top, certeza */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
-          label="Conversaciones hoy"
-          value="1,247"
+          label="Conversaciones activas"
+          value={String(stats.conversations_active)}
           color="mint"
           ratio={0.85}
           icon={<MessageSquare size={18} strokeWidth={1.75} />}
-          legend={{ left: "Resueltas", right: "Activas" }}
-          breakdown={{ left: "1,062", right: "142" }}
         />
         <StatCard
           label="Escaladas"
-          value="43"
+          value={String(stats.conversations_escalated)}
           color="primary"
-          ratio={0.93}
+          ratio={0.9}
           icon={<AlertCircle size={18} strokeWidth={1.75} />}
-          legend={{ left: "Atendidas", right: "Pendientes" }}
-          breakdown={{ left: "40", right: "3" }}
         />
         <StatCard
-          label="Mensajes hoy"
-          value="3,891"
+          label="Tema top del día"
+          value={stats.top_intent?.name ?? "—"}
           color="amber"
-          ratio={0.55}
-          icon={<Zap size={18} strokeWidth={1.75} />}
-          legend={{ left: "Recibidos", right: "Enviados" }}
-          breakdown={{ left: "2,144", right: "1,747" }}
+          ratio={0.7}
+          icon={<TrendingUp size={18} strokeWidth={1.75} />}
+          breakdown={
+            stats.top_intent
+              ? { left: `${stats.top_intent.count}`, right: "detecciones" }
+              : undefined
+          }
         />
         <StatCard
-          label="Costo del día"
-          value="S/ 28.40"
+          label="Certeza promedio"
+          value={certezaPct}
           color="blue"
-          ratio={0.88}
-          icon={<DollarSign size={18} strokeWidth={1.75} />}
-          legend={{ left: "Tokens IN", right: "Tokens OUT" }}
-          breakdown={{ left: "142k", right: "38k" }}
+          ratio={stats.avg_confidence || 0.5}
+          icon={<Zap size={18} strokeWidth={1.75} />}
         />
       </div>
 
       {/* Charts row */}
       <div className="grid grid-cols-[1.4fr_1fr_1.2fr] gap-4">
-        {/* Conversaciones */}
+        {/* Conversaciones (últimos 7 días) */}
         <Card className="p-6 relative">
           <div className="flex justify-between items-start">
             <h3 className="text-[18px] font-semibold tracking-[-0.2px]">
@@ -86,33 +148,42 @@ export default function DashboardPage() {
           <div className="mt-4">
             <div className="text-xs text-muted">Últimos 7 días</div>
             <div className="text-4xl font-bold tracking-[-0.8px] tabular leading-none mt-1">
-              8,420
+              {convTotal7d.toLocaleString("es-PE")}
             </div>
-            <div className="font-mono text-[13px] text-success font-medium mt-1.5 flex items-center gap-1">
-              <TrendingUp size={14} strokeWidth={2.5} />
-              +18.2%
+            <div className="font-mono text-[13px] text-muted font-medium mt-1.5">
+              {stats.conversations_today} hoy
             </div>
           </div>
           <div className="flex gap-2 mt-3">
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 rounded-full text-xs font-medium text-fg-2">
-              <span className="font-mono font-bold text-fg">1,062</span>
+              <span className="font-mono font-bold text-fg">
+                {stats.conversations_active}
+              </span>
               <span className="text-[11px] text-muted bg-surface px-2 py-0.5 rounded-full">
-                resueltas
+                activas
               </span>
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 rounded-full text-xs font-medium text-fg-2">
-              <span className="font-mono font-bold text-fg">43</span>
+              <span className="font-mono font-bold text-fg">
+                {stats.conversations_escalated}
+              </span>
               <span className="text-[11px] text-muted bg-surface px-2 py-0.5 rounded-full">
                 escaladas
               </span>
             </div>
           </div>
-          <MiniBars
-            heights={convHeights}
-            highlightAt={7}
-            color="mint"
-            className="mt-3"
-          />
+          {convTotal7d > 0 ? (
+            <MiniBars
+              heights={convHeights}
+              highlightAt={convHeights.length - 1}
+              color="mint"
+              className="mt-3"
+            />
+          ) : (
+            <div className="mt-4 text-[12px] text-muted-2">
+              Sin actividad en los últimos 7 días.
+            </div>
+          )}
         </Card>
 
         {/* Latencia */}
@@ -121,30 +192,19 @@ export default function DashboardPage() {
             <h3 className="text-[18px] font-semibold tracking-[-0.2px]">
               Latencia
             </h3>
-            <LinkIconButton
-              href="/reports?focus=latency"
-              variant="ghost"
-              size="sm"
-              aria-label="Ver detalle de latencia"
-            >
-              <ArrowUpRight size={14} strokeWidth={2} />
-            </LinkIconButton>
+            <div className="w-8 h-8 rounded-full bg-blue-soft text-blue flex items-center justify-center">
+              <Gauge size={15} strokeWidth={2} />
+            </div>
           </div>
           <div className="mt-4">
-            <div className="text-4xl font-bold tracking-[-0.8px] leading-none">
-              1.42s
+            <div className="text-xs text-muted">Promedio de respuesta hoy</div>
+            <div className="text-4xl font-bold tracking-[-0.8px] leading-none mt-1">
+              {latencia}
             </div>
-            <div className="font-mono text-[13px] text-success font-medium mt-1.5 flex items-center gap-1">
-              <TrendingDown size={14} strokeWidth={2.5} />
-              -120ms p95
+            <div className="font-mono text-[13px] text-muted font-medium mt-1.5">
+              {stats.messages_today} mensajes hoy
             </div>
           </div>
-          <MiniBars
-            heights={latHeights}
-            highlightAt={5}
-            color="blue"
-            className="mt-6"
-          />
         </Card>
 
         {/* Cola escaladas */}
@@ -154,7 +214,7 @@ export default function DashboardPage() {
               Cola escaladas
             </h3>
             <LinkIconButton
-              href="/conversations/mp-001?filter=escalated"
+              href="/conversations?status=takeover"
               variant="ghost"
               size="sm"
               aria-label="Ver cola de escaladas"
@@ -162,46 +222,47 @@ export default function DashboardPage() {
               <ArrowUpRight size={14} strokeWidth={2} />
             </LinkIconButton>
           </div>
-          <div className="text-[13px] text-muted mt-3.5">3 estudiantes esperando</div>
+          <div className="text-[13px] text-muted mt-3.5">
+            {escalatedQueue.total === 0
+              ? "Sin escaladas pendientes"
+              : `${escalatedQueue.total} ${
+                  escalatedQueue.total === 1 ? "estudiante" : "estudiantes"
+                } en atención`}
+          </div>
 
-          <div className="flex gap-1.5 mt-3">
-            <Avatar initials="JC" gradient="amber" size="md" className="!w-9 !h-9 !text-xs" />
-            <Avatar initials="MP" gradient="coral" size="md" className="!w-9 !h-9 !text-xs" />
-            <Avatar initials="RP" gradient="violet" size="md" className="!w-9 !h-9 !text-xs" />
-            <div className="w-9 h-9 rounded-full border-2 border-dashed border-line-2 text-muted-2 flex items-center justify-center text-sm">
-              +
+          {escalatedQueue.items.length > 0 && (
+            <div className="flex gap-1.5 mt-3 flex-wrap">
+              {escalatedQueue.items.map((c, i) => (
+                <Avatar
+                  key={c.id}
+                  initials={initialsOf(c.display_name, c.student_phone)}
+                  gradient={AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length]}
+                  size="md"
+                  className="!w-9 !h-9 !text-xs"
+                />
+              ))}
             </div>
-            <div className="w-9 h-9 rounded-full bg-surface-2" />
-            <div className="w-9 h-9 rounded-full bg-surface-2" />
-          </div>
+          )}
 
-          <div className="mt-4 text-[13px] text-fg font-semibold">
-            Slots disponibles hoy
-          </div>
-          <div className="grid grid-cols-4 gap-1.5 mt-3">
-            {["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"].map(
-              (t, i) => (
-                <div
-                  key={t}
-                  className={
-                    i === 2
-                      ? "bg-ink text-white rounded-full py-2 text-center text-[11px] font-mono font-medium"
-                      : "bg-surface-2 text-fg-2 rounded-full py-2 text-center text-[11px] font-mono font-medium"
-                  }
-                >
-                  {t}
-                </div>
-              )
-            )}
-          </div>
-
-          <div className="mt-4 h-2 rounded-full bg-[linear-gradient(90deg,#F5A623_0%,#4ADE80_35%,#3B82F6_70%,#FAF8F4_70%)] relative">
-            <div className="absolute -top-1 left-[70%] w-4 h-4 bg-surface border border-line rounded-full" />
-          </div>
+          <ul className="mt-4 flex flex-col gap-2">
+            {escalatedQueue.items.slice(0, 4).map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center justify-between text-[13px]"
+              >
+                <span className="font-medium truncate">
+                  {c.display_name ?? c.student_phone}
+                </span>
+                <span className="font-mono text-[11px] text-muted">
+                  {c.message_count} msg
+                </span>
+              </li>
+            ))}
+          </ul>
         </Card>
       </div>
 
-      {/* Big chart */}
+      {/* Big chart — intenciones */}
       <Card className="p-7">
         <div className="flex justify-between items-start">
           <div>
@@ -210,13 +271,10 @@ export default function DashboardPage() {
             </h3>
             <div className="mt-4">
               <div className="text-[34px] font-bold tracking-[-0.8px] leading-none">
-                1,247{" "}
+                {intentTotal.toLocaleString("es-PE")}{" "}
                 <span className="text-sm font-medium text-muted ml-2">
-                  conversaciones · top 5
+                  detecciones · top {topIntents.length} · 30 días
                 </span>
-              </div>
-              <div className="font-mono text-[13px] text-primary font-medium mt-1">
-                ↘ -3.5% fallback rate vs ayer
               </div>
             </div>
           </div>
@@ -241,7 +299,13 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-8">
-          <BigBars data={topIntents} yMax={1000} />
+          {topIntents.length > 0 ? (
+            <BigBars data={topIntents} yMax={intentYMax} />
+          ) : (
+            <div className="text-center text-muted text-sm py-16">
+              Aún no hay intenciones detectadas en el período.
+            </div>
+          )}
         </div>
       </Card>
     </div>
