@@ -15,7 +15,7 @@ export function DashboardHeader() {
           Resumen
         </h1>
         <p className="text-sm text-muted mt-2">
-          Estado del chatbot · datos en tiempo real
+          Estado del chatbot · datos del día
         </p>
       </div>
       <Button variant="primary" size="md" onClick={() => setOpen(true)}>
