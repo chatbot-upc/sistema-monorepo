@@ -320,6 +320,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 user_text=parsed.text,
                 correlation_id=correlation_id,
                 history=history,
+                db=db,
             )
             latency_ms = int((time.perf_counter() - started) * 1000)
             answer_text = str(result.get("text") or "")

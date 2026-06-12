@@ -7,6 +7,7 @@ import {
   MessageSquare,
   FileText,
   Tag,
+  Sparkles,
   BarChart3,
   Activity,
   ChevronUp,
@@ -35,6 +36,7 @@ const NAV: NavItem[] = [
   },
   { href: "/documents", label: "Documentos", icon: FileText },
   { href: "/intents", label: "Intenciones", icon: Tag },
+  { href: "/prompts", label: "Prompt", icon: Sparkles },
   { href: "/reports", label: "Reportes", icon: BarChart3 },
   { href: "/monitoring", label: "Monitoreo", icon: Activity },
 ];

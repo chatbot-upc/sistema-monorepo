@@ -185,7 +185,11 @@ async def test_second_turn_feeds_history_to_rag(
     captured: dict[str, Any] = {}
 
     async def _capturing_answer(
-        *, user_text: str, correlation_id: str, history: list[dict[str, str]] | None = None
+        *,
+        user_text: str,
+        correlation_id: str,
+        history: list[dict[str, str]] | None = None,
+        db: object | None = None,
     ) -> dict[str, Any]:
         captured["user_text"] = user_text
         captured["history"] = list(history or [])
@@ -228,7 +232,11 @@ async def test_first_turn_history_is_empty(
     captured: dict[str, Any] = {}
 
     async def _capturing_answer(
-        *, user_text: str, correlation_id: str, history: list[dict[str, str]] | None = None
+        *,
+        user_text: str,
+        correlation_id: str,
+        history: list[dict[str, str]] | None = None,
+        db: object | None = None,
     ) -> dict[str, Any]:
         captured["history"] = list(history or [])
         return {"text": "primera respuesta", "tool_calls": []}

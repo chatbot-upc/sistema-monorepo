@@ -11,25 +11,92 @@ round-trips.
 from pathlib import Path
 from typing import Any
 
+import structlog
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.core.settings import get_settings
 from chatbot_api.rag.tools import escalate_to_human, search_knowledge_base
+from chatbot_api.repositories.prompt_version import prompt_version_repository
+
+log = structlog.get_logger()
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "v1"
-_system_prompt: str | None = None  # immutable text cache; safe to keep
+_PROMPT_NAME = "agent_system"
+
+# Tier-2 fallback: contenido del archivo. Inmutable, cache de proceso seguro.
+_static_prompt: str | None = None
+
+# Tier-1: versión activa de la DB, cacheada por proceso e invalidada vía un
+# generation counter en Redis (mismo patrón que el índice SBERT de SW-16). La
+# API hace INCR tras activar/editar; el worker lo detecta y recarga sin reiniciar.
+_active_prompt: str | None = None
+_active_gen: int | None = None
+_GEN_KEY = "chatbot:prompt_version_gen"
 
 
-def _get_system_prompt() -> str:
-    global _system_prompt
-    if _system_prompt is None:
-        _system_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(encoding="utf-8")
-    return _system_prompt
+def _get_static_prompt() -> str:
+    global _static_prompt
+    if _static_prompt is None:
+        _static_prompt = (_PROMPTS_DIR / "agent_system.md").read_text(
+            encoding="utf-8"
+        )
+    return _static_prompt
 
 
-def _get_agent() -> Any:
+async def _current_gen() -> int | None:
+    """Lee la generación actual. None si Redis falla → caller conserva su cache."""
+    settings = get_settings()
+    try:
+        from redis.asyncio import Redis
+
+        client = Redis.from_url(settings.redis_url)
+        try:
+            raw = await client.get(_GEN_KEY)
+        finally:
+            await client.aclose()
+        return int(raw) if raw is not None else 0
+    except Exception:
+        log.exception("prompt_version_gen_read_failed")
+        return None
+
+
+async def bump_prompt_generation() -> None:
+    """Invalida el prompt cacheado en todos los procesos. API la llama tras write."""
+    settings = get_settings()
+    try:
+        from redis.asyncio import Redis
+
+        client = Redis.from_url(settings.redis_url)
+        try:
+            await client.incr(_GEN_KEY)
+        finally:
+            await client.aclose()
+    except Exception:
+        log.exception("prompt_version_gen_bump_failed")
+
+
+async def _get_system_prompt(db: AsyncSession | None) -> str:
+    """Versión activa del prompt.
+
+    - `db is None` (tests / sin sesión): usa el archivo estático.
+    - con `db`: cache-aside sobre la versión activa de la DB, invalidada por el
+      generation counter en Redis. Si no hay activa o Redis falla, cae al archivo.
+    """
+    if db is None:
+        return _get_static_prompt()
+    gen = await _current_gen()
+    global _active_prompt, _active_gen
+    if _active_prompt is None or (gen is not None and gen != _active_gen):
+        row = await prompt_version_repository.get_active(db, _PROMPT_NAME)
+        _active_prompt = row.content if row else _get_static_prompt()
+        _active_gen = gen
+    return _active_prompt
+
+
+def _get_agent(system_prompt: str) -> Any:
     """Builds a fresh agent per call (see module docstring)."""
     settings = get_settings()
     chat = ChatOpenAI(
@@ -39,7 +106,7 @@ def _get_agent() -> Any:
     return create_agent(
         model=chat,
         tools=[escalate_to_human, search_knowledge_base],
-        system_prompt=_get_system_prompt(),
+        system_prompt=system_prompt,
     )
 
 
@@ -48,6 +115,7 @@ async def answer(
     user_text: str,
     correlation_id: str,
     history: list[dict[str, str]] | None = None,
+    db: AsyncSession | None = None,
 ) -> dict[str, Any]:
     """Invoca el agente con el mensaje del usuario + historial reciente.
 
@@ -66,7 +134,8 @@ async def answer(
     messages: list[dict[str, str]] = list(history or [])
     messages.append({"role": "user", "content": user_text})
 
-    result = await _get_agent().ainvoke(
+    system_prompt = await _get_system_prompt(db)
+    result = await _get_agent(system_prompt).ainvoke(
         {"messages": messages},
         config={
             "recursion_limit": 10,

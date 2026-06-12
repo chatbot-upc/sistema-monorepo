@@ -8,6 +8,7 @@ from .endpoints import (
     intents,
     monitoring,
     notifications,
+    prompts,
     reports,
 )
 
@@ -19,4 +20,5 @@ api_v1_router.include_router(documents.router)
 api_v1_router.include_router(intents.router)
 api_v1_router.include_router(monitoring.router)
 api_v1_router.include_router(notifications.router)
+api_v1_router.include_router(prompts.router)
 api_v1_router.include_router(reports.router)
