@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.api.dependencies import get_current_admin
 from chatbot_api.core.db import get_session
 from chatbot_api.models import Admin
-from chatbot_api.schemas.intent import IntentRead
+from chatbot_api.schemas.intent import IntentCreate, IntentRead, IntentUpdate
 from chatbot_api.schemas.pagination import Page, PageParams
 from chatbot_api.services import intent_service
 
@@ -33,16 +33,31 @@ async def get_intent(
     return await intent_service.get_detail(db, intent_id)
 
 
-@router.post("")
-async def create_intent(_: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 5")
+@router.post("", response_model=IntentRead, status_code=status.HTTP_201_CREATED)
+async def create_intent(
+    payload: IntentCreate,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> IntentRead:
+    return await intent_service.create_intent(db, payload=payload, admin_id=admin.id)
 
 
-@router.put("/{intent_id}")
-async def update_intent(intent_id: int, _: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 5")
+@router.put("/{intent_id}", response_model=IntentRead)
+async def update_intent(
+    intent_id: int,
+    payload: IntentUpdate,
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> IntentRead:
+    return await intent_service.update_intent(
+        db, intent_id=intent_id, payload=payload
+    )
 
 
-@router.delete("/{intent_id}")
-async def delete_intent(intent_id: int, _: Admin = Depends(get_current_admin)) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "implementado en Fase 5")
+@router.delete("/{intent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_intent(
+    intent_id: int,
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    await intent_service.delete_intent(db, intent_id=intent_id)

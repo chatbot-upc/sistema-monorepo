@@ -47,6 +47,45 @@ class _IntentIndex:
 
 
 _index: _IntentIndex | None = None
+_index_gen: int | None = None
+
+# Generación del catálogo de intents en Redis. La API la incrementa tras cada
+# CRUD; el worker (que cachea `_index` en su propio proceso) la consulta antes de
+# reusar el índice y reconstruye si cambió. Resuelve la invalidación cross-process
+# sin reiniciar el worker (SW-16).
+_GEN_KEY = "chatbot:intent_index_gen"
+
+
+async def _current_gen() -> int | None:
+    """Lee la generación actual. None si Redis falla → caller conserva su cache."""
+    settings = get_settings()
+    try:
+        from redis.asyncio import Redis
+
+        client = Redis.from_url(settings.redis_url)
+        try:
+            raw = await client.get(_GEN_KEY)
+        finally:
+            await client.aclose()
+        return int(raw) if raw is not None else 0
+    except Exception:
+        log.exception("intent_index_gen_read_failed")
+        return None
+
+
+async def bump_index_generation() -> None:
+    """Invalida el índice de todos los procesos. La API la llama tras cada write."""
+    settings = get_settings()
+    try:
+        from redis.asyncio import Redis
+
+        client = Redis.from_url(settings.redis_url)
+        try:
+            await client.incr(_GEN_KEY)
+        finally:
+            await client.aclose()
+    except Exception:
+        log.exception("intent_index_gen_bump_failed")
 
 
 async def _build_index(db: AsyncSession) -> _IntentIndex:
@@ -72,16 +111,19 @@ async def _build_index(db: AsyncSession) -> _IntentIndex:
 
 
 async def _get_index(db: AsyncSession) -> _IntentIndex:
-    global _index
-    if _index is None:
+    global _index, _index_gen
+    gen = await _current_gen()
+    if _index is None or (gen is not None and gen != _index_gen):
         _index = await _build_index(db)
+        _index_gen = gen
     return _index
 
 
 def reset_index() -> None:
     """Test/admin hook — force re-build on next classify (after intent CRUD)."""
-    global _index
+    global _index, _index_gen
     _index = None
+    _index_gen = None
 
 
 def _get_llm() -> ChatOpenAI:

@@ -7,18 +7,15 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/ToastProvider";
-import {
-  addIntent,
-  updateIntent,
-  type Intent,
-} from "@/lib/mock";
 import { cn } from "@/lib/cn";
+import type { IntentRead } from "@/lib/api/intents";
+import { createIntentAction, updateIntentAction } from "../_actions/intents";
 import { useIntentForm } from "./useIntentForm";
 
 interface IntentEditorModalProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  intent: Intent | null;
+  intent: IntentRead | null;
 }
 
 export function IntentEditorModal({
@@ -31,9 +28,7 @@ export function IntentEditorModal({
     useIntentForm(intent, open);
   const isEdit = intent !== null;
 
-  // Cancel guard: si el modal se cierra mid-await (Esc, Cancel, click fuera),
-  // descartamos la mutación + toast en vez de aplicarlos en background.
-  // Vercel rule: rerender-use-ref-transient-values.
+  // Cancel guard: si el modal se cierra mid-await, descartamos el resultado.
   const cancelRef = useRef(false);
   useEffect(() => {
     if (open) {
@@ -50,40 +45,37 @@ export function IntentEditorModal({
       return;
     }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 350));
+    const result = isEdit
+      ? await updateIntentAction(intent.id, {
+          active: draft.active,
+          examples: samples,
+        })
+      : await createIntentAction({
+          name: draft.name.trim(),
+          examples: samples,
+        });
     if (cancelRef.current) return;
-    if (isEdit) {
-      updateIntent(intent.id, {
-        name: draft.name.trim(),
-        threshold: draft.threshold,
-        active: draft.active,
-        samples,
-        examples: samples.length,
+    setSubmitting(false);
+
+    if (result.ok) {
+      toast.success(isEdit ? "Intención actualizada" : "Intención creada", {
+        description: isEdit
+          ? `Cambios guardados para ${intent.name}.`
+          : `${draft.name.trim()} con ${samples.length} ejemplos.`,
       });
-      toast.success("Intención actualizada", {
-        description: `Cambios guardados para ${draft.name.trim()}.`,
-      });
+      onOpenChange(false);
     } else {
-      addIntent({
-        name: draft.name.trim(),
-        threshold: draft.threshold,
-        active: draft.active,
-        samples,
-        examples: samples.length,
-      });
-      toast.success("Intención creada", {
-        description: `${draft.name.trim()} con ${samples.length} ejemplos.`,
+      toast.error(isEdit ? "No se pudo actualizar" : "No se pudo crear", {
+        description: result.error,
       });
     }
-    setSubmitting(false);
-    onOpenChange(false);
   };
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} size="lg">
       <Modal.Header
         title={isEdit ? "Editar intención" : "Nueva intención"}
-        description="Define el nombre técnico, los ejemplos de entrenamiento y el umbral mínimo de confianza."
+        description="Define el nombre técnico y las frases de ejemplo que el clasificador SBERT usa para enrutar."
       />
       <Modal.Body>
         <Field label="Nombre técnico">
@@ -93,9 +85,20 @@ export function IntentEditorModal({
               setDraft((d) => ({ ...d, name: e.target.value }))
             }
             placeholder="ej. costos_matricula"
-            autoFocus
+            autoFocus={!isEdit}
+            disabled={isEdit}
             className="font-mono"
           />
+          {isEdit ? (
+            <span className="text-[11px] text-muted">
+              El nombre técnico no se puede cambiar (se usa internamente para
+              enrutar).
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted">
+              snake_case · solo a-z, 0-9 y guión bajo.
+            </span>
+          )}
         </Field>
 
         <Field label="Ejemplos (uno por línea)">
@@ -105,7 +108,9 @@ export function IntentEditorModal({
               setDraft((d) => ({ ...d, samplesText: e.target.value }))
             }
             rows={6}
-            placeholder={"cuánto cuesta la matrícula\nprecio de la pensión\ncuánto pago por ciclo"}
+            placeholder={
+              "cuánto cuesta la matrícula\nprecio de la pensión\ncuánto pago por ciclo"
+            }
             className="font-mono text-[12.5px]"
           />
           <span className="text-[11px] text-muted">
@@ -114,30 +119,17 @@ export function IntentEditorModal({
           </span>
         </Field>
 
-        <Field label={`Umbral de confianza · ${draft.threshold.toFixed(2)}`}>
-          <ThresholdSlider
-            value={draft.threshold}
-            onChange={(v) => setDraft((d) => ({ ...d, threshold: v }))}
-          />
-          <div className="flex justify-between text-[11px] text-muted font-mono">
-            <span>0.00 (laxo)</span>
-            <span>1.00 (estricto)</span>
-          </div>
-        </Field>
-
         <Field label="Estado">
           <button
             type="button"
             role="switch"
             aria-checked={draft.active}
-            onClick={() =>
-              setDraft((d) => ({ ...d, active: !d.active }))
-            }
+            onClick={() => setDraft((d) => ({ ...d, active: !d.active }))}
             className={cn(
-              "flex items-center justify-between rounded-2xl px-4 py-3 border transition-colors cursor-pointer",
+              "flex items-center justify-between rounded-2xl px-4 py-3 border transition-colors cursor-pointer w-full",
               draft.active
                 ? "bg-primary-soft border-primary/20"
-                : "bg-surface-2 border-transparent hover:bg-bg-2"
+                : "bg-surface-2 border-transparent hover:bg-bg-2",
             )}
           >
             <div className="text-left">
@@ -153,13 +145,13 @@ export function IntentEditorModal({
             <span
               className={cn(
                 "relative w-11 h-6 rounded-full transition-colors shrink-0",
-                draft.active ? "bg-primary" : "bg-muted-2"
+                draft.active ? "bg-primary" : "bg-muted-2",
               )}
             >
               <span
                 className={cn(
                   "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform",
-                  draft.active && "translate-x-5"
+                  draft.active && "translate-x-5",
                 )}
               />
             </span>
@@ -187,33 +179,5 @@ export function IntentEditorModal({
         </Button>
       </Modal.Footer>
     </Modal>
-  );
-}
-
-interface ThresholdSliderProps {
-  value: number;
-  onChange: (v: number) => void;
-}
-
-function ThresholdSlider({ value, onChange }: ThresholdSliderProps) {
-  const pct = Math.round(value * 100);
-  return (
-    <div className="relative h-6 flex items-center">
-      <div className="absolute inset-x-0 h-1.5 rounded-full bg-surface-2" />
-      <div
-        className="absolute h-1.5 rounded-full bg-primary"
-        style={{ width: `${pct}%` }}
-      />
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="relative w-full h-6 appearance-none bg-transparent cursor-pointer slider-thumb"
-        aria-label="Umbral de confianza"
-      />
-    </div>
   );
 }

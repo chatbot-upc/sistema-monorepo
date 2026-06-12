@@ -11,10 +11,12 @@ import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconButton } from "@/components/ui/IconButton";
-import type { Intent } from "@/lib/mock";
+import type { IntentRead } from "@/lib/api/intents";
+
+const PREVIEW_LIMIT = 12;
 
 interface IntentRowProps {
-  intent: Intent;
+  intent: IntentRead;
   open: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -28,6 +30,9 @@ export function IntentRow({
   onEdit,
   onDelete,
 }: IntentRowProps) {
+  const preview = intent.examples.slice(0, PREVIEW_LIMIT);
+  const remaining = intent.examples.length - preview.length;
+
   return (
     <Card variant="flush" className="overflow-hidden">
       <div className="flex items-center pr-4">
@@ -47,8 +52,9 @@ export function IntentRow({
               {intent.name}
             </div>
             <div className="font-mono text-[11px] text-muted mt-1">
-              {intent.examples} ejemplos · umbral{" "}
-              {intent.threshold.toFixed(2)}
+              {intent.examples.length} ejemplo
+              {intent.examples.length === 1 ? "" : "s"}
+              {intent.description ? ` · ${intent.description}` : ""}
             </div>
           </div>
           <Pill tone={intent.active ? "active" : "closed"}>
@@ -95,10 +101,10 @@ export function IntentRow({
       {open ? (
         <div className="border-t border-line px-6 py-5 bg-surface-2">
           <div className="text-[11px] uppercase tracking-[0.6px] font-semibold text-muted mb-3">
-            Ejemplos · {intent.samples.length} mostrados
+            Ejemplos · {preview.length} mostrados
           </div>
           <div className="flex flex-wrap gap-2">
-            {intent.samples.map((sample, i) => (
+            {preview.map((sample, i) => (
               <div
                 key={i}
                 className="bg-surface px-4 py-2.5 rounded-full text-[13px] text-fg-2"
@@ -106,9 +112,9 @@ export function IntentRow({
                 &ldquo;{sample}&rdquo;
               </div>
             ))}
-            {intent.examples > intent.samples.length ? (
+            {remaining > 0 ? (
               <div className="px-4 py-2.5 rounded-full text-[13px] text-muted bg-surface border border-dashed border-line-2">
-                + {intent.examples - intent.samples.length} más
+                + {remaining} más
               </div>
             ) : null}
           </div>

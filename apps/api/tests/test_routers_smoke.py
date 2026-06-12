@@ -146,8 +146,3 @@ async def test_upload_document_requires_file(client: AsyncClient) -> None:
     """POST /documents está implementado (Fase 3) — sin file devuelve 422."""
     response = await client.post("/api/v1/documents", headers=DEV_USER_HEADER)
     assert response.status_code == 422
-
-
-async def test_create_intent_not_implemented(client: AsyncClient) -> None:
-    response = await client.post("/api/v1/intents", headers=DEV_USER_HEADER)
-    assert response.status_code == 501

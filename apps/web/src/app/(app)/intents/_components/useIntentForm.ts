@@ -1,37 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Intent } from "@/lib/mock";
+import type { IntentRead } from "@/lib/api/intents";
 
 export interface IntentDraft {
   name: string;
-  threshold: number;
   active: boolean;
   samplesText: string;
 }
 
 const EMPTY: IntentDraft = {
   name: "",
-  threshold: 0.65,
   active: true,
   samplesText: "",
 };
 
-const fromIntent = (i: Intent): IntentDraft => ({
+const fromIntent = (i: IntentRead): IntentDraft => ({
   name: i.name,
-  threshold: i.threshold,
   active: i.active,
-  samplesText: i.samples.join("\n"),
+  samplesText: i.examples.join("\n"),
 });
 
-export function useIntentForm(intent: Intent | null, open: boolean) {
+export function useIntentForm(intent: IntentRead | null, open: boolean) {
   const [draft, setDraft] = useState<IntentDraft>(
-    intent ? fromIntent(intent) : EMPTY
+    intent ? fromIntent(intent) : EMPTY,
   );
   const [submitting, setSubmitting] = useState(false);
 
+  // Reset del draft editable cada vez que el modal abre (o cambia el intent).
+  // No es estado derivado: el usuario lo edita, así que se siembra desde props
+  // al abrir y luego es independiente. setState-in-effect es el patrón correcto
+  // para "reset form on open".
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(intent ? fromIntent(intent) : EMPTY);
     setSubmitting(false);
   }, [open, intent]);
