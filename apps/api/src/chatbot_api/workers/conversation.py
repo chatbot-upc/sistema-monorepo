@@ -161,7 +161,11 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 phone_e164=parsed.from_phone,
                 display_name=parsed.display_name,
             )
-            conv, conv_created = await conversation_repository.get_or_create_open(
+            (
+                conv,
+                conv_created,
+                conv_reopened,
+            ) = await conversation_repository.get_or_create_open(
                 db, parsed.from_phone
             )
             if conv_created:
@@ -188,12 +192,19 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
             await publish_event(
                 "message.created", message_to_event_payload(inbound)
             )
+            if conv_reopened:
+                # El CRM debe ver el pill "Cerrada" → "Abierta" en vivo.
+                await publish_event(
+                    "conversation.status_changed",
+                    {"conversation_id": conv.id, "status": "abierta"},
+                )
             log.info(
                 "inbound_persisted",
                 correlation_id=correlation_id,
                 conversation_id=conv.id,
                 message_id=inbound.id,
                 conversation_created=conv_created,
+                conversation_reopened=conv_reopened,
                 student_created=student_created,
             )
 

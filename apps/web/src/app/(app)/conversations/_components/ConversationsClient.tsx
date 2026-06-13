@@ -118,6 +118,15 @@ export function ConversationsClient({
       if (data.conversation_id === active.id) {
         setActive((prev) => ({ ...prev, status: data.status }));
       }
+    } else if (event.type === "conversation.deleted") {
+      const data = event.data as { conversation_id: number };
+      setConversations((prev) =>
+        prev.filter((c) => c.id !== data.conversation_id),
+      );
+      // Si borraron la que estoy viendo (desde otra pestaña), salgo a la lista.
+      if (data.conversation_id === active.id) {
+        router.push("/conversations");
+      }
     }
   });
 
@@ -212,7 +221,16 @@ export function ConversationsClient({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <ConversationActions conversationId={active.id} status={active.status} />
+            <ConversationActions
+              conversationId={active.id}
+              status={active.status}
+              onDeleted={() => {
+                setConversations((prev) =>
+                  prev.filter((c) => c.id !== active.id),
+                );
+                router.push("/conversations");
+              }}
+            />
             <Pill tone={STATUS_TONE[active.status]}>
               {STATUS_LABEL[active.status]}
             </Pill>

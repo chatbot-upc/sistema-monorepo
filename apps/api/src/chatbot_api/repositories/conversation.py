@@ -119,31 +119,38 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
 
     async def get_or_create_open(
         self, db: AsyncSession, student_phone: str
-    ) -> tuple[Conversation, bool]:
-        """Return latest open/takeover conversation for phone or create a fresh one.
+    ) -> tuple[Conversation, bool, bool]:
+        """Conversación activa del estudiante (modelo estilo Chatwoot).
 
-        Returns (conversation, created) where `created` is True only on first contact.
+        Toma la última conversación del número: si está abierta/takeover la
+        reutiliza; si está `cerrada` la **reabre** (un solo hilo por contacto,
+        sin duplicados en el CRM). Solo crea una nueva en el primer contacto.
+
+        Returns (conversation, created, reopened):
+          - created: True solo si se creó una conversación nueva.
+          - reopened: True si se reabrió una que estaba `cerrada`.
         """
         result = await db.execute(
             select(Conversation)
-            .where(
-                Conversation.student_phone == student_phone,
-                Conversation.status.in_(
-                    [ConversationStatus.abierta, ConversationStatus.takeover]
-                ),
-            )
+            .where(Conversation.student_phone == student_phone)
             .order_by(Conversation.opened_at.desc())
             .limit(1)
         )
-        existing = result.scalars().first()
-        if existing is not None:
-            return existing, False
+        latest = result.scalars().first()
+        if latest is not None:
+            if latest.status == ConversationStatus.cerrada:
+                latest.status = ConversationStatus.abierta
+                latest.closed_at = None
+                latest.closed_by = None
+                await db.flush()
+                return latest, False, True
+            return latest, False, False
         conv = Conversation(
             student_phone=student_phone, status=ConversationStatus.abierta
         )
         db.add(conv)
         await db.flush()
-        return conv, True
+        return conv, True, False
 
 
 conversation_repository = ConversationRepository(Conversation)

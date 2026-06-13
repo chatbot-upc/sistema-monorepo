@@ -144,3 +144,11 @@ export async function reopenConversation(
     method: "POST",
   });
 }
+
+export async function deleteConversation(
+  conversationId: number,
+): Promise<void> {
+  return apiFetch<void>(`/api/v1/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+}

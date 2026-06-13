@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Hand, HandMetal, Lock, RotateCcw } from "lucide-react";
+import { Hand, HandMetal, Lock, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
 import {
   closeAction,
+  deleteAction,
   releaseAction,
   reopenAction,
   takeoverAction,
@@ -16,9 +18,10 @@ import type { ConversationStatus } from "@/lib/api/conversations";
 interface Props {
   conversationId: number;
   status: ConversationStatus;
+  onDeleted?: () => void;
 }
 
-type ConfirmKey = "takeover" | "release" | "close" | "reopen" | null;
+type ConfirmKey = "takeover" | "release" | "close" | "reopen" | "delete" | null;
 
 const COPY: Record<
   Exclude<ConfirmKey, null>,
@@ -46,9 +49,19 @@ const COPY: Record<
     description: "Volverá a estado Abierta y el bot podrá responder.",
     confirmLabel: "Reabrir",
   },
+  delete: {
+    title: "Eliminar conversación",
+    description:
+      "Se borrará la conversación y todos sus mensajes de forma permanente. Esta acción no se puede deshacer.",
+    confirmLabel: "Eliminar",
+  },
 };
 
-export function ConversationActions({ conversationId, status }: Props) {
+export function ConversationActions({
+  conversationId,
+  status,
+  onDeleted,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState<ConfirmKey>(null);
   const { toast } = useToast();
@@ -63,10 +76,17 @@ export function ConversationActions({ conversationId, status }: Props) {
               ? releaseAction
               : key === "close"
                 ? closeAction
-                : reopenAction;
+                : key === "reopen"
+                  ? reopenAction
+                  : deleteAction;
         const result = await action(conversationId);
         if (result.ok) {
-          toast.success("Acción aplicada");
+          if (key === "delete") {
+            toast.success("Conversación eliminada");
+            onDeleted?.();
+          } else {
+            toast.success("Acción aplicada");
+          }
           resolve();
         } else {
           toast.error("No se pudo aplicar", { description: result.error });
@@ -133,6 +153,15 @@ export function ConversationActions({ conversationId, status }: Props) {
             Reabrir
           </Button>
         )}
+        <IconButton
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={() => setOpen("delete")}
+          aria-label="Eliminar conversación"
+        >
+          <Trash2 size={16} strokeWidth={2} />
+        </IconButton>
       </div>
 
       {open && (
@@ -142,7 +171,9 @@ export function ConversationActions({ conversationId, status }: Props) {
           title={COPY[open].title}
           description={COPY[open].description}
           confirmLabel={COPY[open].confirmLabel}
-          variant={open === "close" ? "destructive" : "default"}
+          variant={
+            open === "close" || open === "delete" ? "destructive" : "default"
+          }
           onConfirm={() => run(open)}
         />
       )}

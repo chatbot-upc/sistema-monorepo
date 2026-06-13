@@ -3,6 +3,7 @@
 import { ApiError } from "@/lib/api/client";
 import {
   closeConversation,
+  deleteConversation,
   reopenConversation,
   releaseConversation,
   sendConversationMessage,
@@ -104,5 +105,16 @@ export async function reopenAction(id: number): Promise<ActionResult> {
     return { ok: true, data: undefined };
   } catch (err) {
     return toError(err, "No se pudo reabrir la conversación.");
+  }
+}
+
+export async function deleteAction(id: number): Promise<ActionResult> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    await deleteConversation(id);
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return toError(err, "No se pudo eliminar la conversación.");
   }
 }

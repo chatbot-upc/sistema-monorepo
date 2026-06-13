@@ -186,7 +186,7 @@ async def test_worker_skips_bot_when_takeover(
     setup_factory = async_sessionmaker(setup_engine, expire_on_commit=False)
     async with setup_factory() as setup_db:
         await student_repository.upsert_by_phone(setup_db, phone_e164=phone)
-        conv, _ = await conversation_repository.get_or_create_open(setup_db, phone)
+        conv, _, _ = await conversation_repository.get_or_create_open(setup_db, phone)
         conv.status = ConversationStatus.takeover
         await setup_db.commit()
     await setup_engine.dispose()

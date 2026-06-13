@@ -153,3 +153,37 @@ async def test_reopen_rejects_abierta(
         f"/api/v1/conversations/{conv.id}/reopen", headers=DEV_USER_HEADER
     )
     assert response.status_code == 409
+
+
+async def test_delete_conversation(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from sqlalchemy import select
+
+    from chatbot_api.models import Conversation
+
+    student = await factories.make_student(db_session, phone="+51900300009")
+    conv = await factories.make_conversation(
+        db_session, student_phone=student.phone_e164
+    )
+    await factories.make_message(db_session, conversation_id=conv.id, content="hola")
+    conv_id = conv.id
+
+    response = await client.delete(
+        f"/api/v1/conversations/{conv_id}", headers=DEV_USER_HEADER
+    )
+    assert response.status_code == 204
+
+    rows = (
+        await db_session.execute(
+            select(Conversation).where(Conversation.id == conv_id)
+        )
+    ).scalars().all()
+    assert len(rows) == 0
+
+
+async def test_delete_conversation_404(client: AsyncClient) -> None:
+    response = await client.delete(
+        "/api/v1/conversations/999999", headers=DEV_USER_HEADER
+    )
+    assert response.status_code == 404

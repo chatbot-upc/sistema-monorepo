@@ -273,3 +273,19 @@ async def reopen(
     return {"status": conv.status.value}
 
 
+async def delete_conversation(
+    db: AsyncSession, *, conversation_id: int, admin_id: int
+) -> None:
+    """Hard delete de la conversación + sus mensajes (FK cascade). Limpia cache."""
+    conv = await _get_or_404(db, conversation_id)
+    await db.delete(conv)
+    await db.commit()
+    await conversation_history_service.clear(conversation_id)
+    await publish_event(
+        "conversation.deleted", {"conversation_id": conversation_id}
+    )
+    log.info(
+        "conversation_deleted", conversation_id=conversation_id, admin_id=admin_id
+    )
+
+

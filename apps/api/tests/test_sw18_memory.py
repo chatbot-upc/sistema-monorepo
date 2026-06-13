@@ -166,7 +166,7 @@ async def test_second_turn_feeds_history_to_rag(
     setup_factory = async_sessionmaker(setup_engine, expire_on_commit=False)
     async with setup_factory() as setup_db:
         await student_repository.upsert_by_phone(setup_db, phone_e164=phone)
-        conv, _ = await conversation_repository.get_or_create_open(setup_db, phone)
+        conv, _, _ = await conversation_repository.get_or_create_open(setup_db, phone)
         await message_repository.create_inbound(
             setup_db,
             conversation_id=conv.id,

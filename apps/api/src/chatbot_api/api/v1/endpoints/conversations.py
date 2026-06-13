@@ -107,6 +107,17 @@ async def reopen(
     )
 
 
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    await conversation_service.delete_conversation(
+        db, conversation_id=conversation_id, admin_id=admin.id
+    )
+
+
 @router.post(
     "/{conversation_id}/messages",
     response_model=SendMessageResponse,
