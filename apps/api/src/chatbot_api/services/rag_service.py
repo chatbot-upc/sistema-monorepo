@@ -116,6 +116,7 @@ async def answer(
     correlation_id: str,
     history: list[dict[str, str]] | None = None,
     db: AsyncSession | None = None,
+    profile_context: str | None = None,
 ) -> dict[str, Any]:
     """Invoca el agente con el mensaje del usuario + historial reciente.
 
@@ -135,6 +136,8 @@ async def answer(
     messages.append({"role": "user", "content": user_text})
 
     system_prompt = await _get_system_prompt(db)
+    if profile_context:
+        system_prompt = f"{system_prompt}\n\n{profile_context}"
     result = await _get_agent(system_prompt).ainvoke(
         {"messages": messages},
         config={

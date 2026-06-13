@@ -63,3 +63,6 @@ scrapping/.ipynb_checkpoints/
 .claude/settings.local.json
 .claude/skills/
 skills-lock.json
+
+# Data simulada de estudiantes (no va a git)
+data-alumnos.xlsx

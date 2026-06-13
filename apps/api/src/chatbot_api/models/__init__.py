@@ -19,6 +19,7 @@ from .metrics_daily import MetricsDaily
 from .notification import Notification
 from .prompt_version import PromptVersion
 from .student import Student
+from .student_profile import StudentProfile
 
 __all__ = [
     "Admin",
@@ -40,4 +41,5 @@ __all__ = [
     "NotificationStatus",
     "PromptVersion",
     "Student",
+    "StudentProfile",
 ]

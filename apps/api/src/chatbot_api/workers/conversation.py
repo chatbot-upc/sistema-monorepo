@@ -35,6 +35,7 @@ from chatbot_api.services import (
     intent_classifier_service,
     push_service,
     rag_service,
+    student_profile_service,
     whatsapp_service,
 )
 
@@ -315,12 +316,24 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 history_turns=len(history),
             )
 
+            # SW-48: cargar perfil académico por número para personalizar.
+            profile_context = await student_profile_service.get_profile_context(
+                db, parsed.from_phone
+            )
+            log.info(
+                "profile_loaded",
+                correlation_id=correlation_id,
+                conversation_id=conv.id,
+                profile_loaded=profile_context is not None,
+            )
+
             started = time.perf_counter()
             result = await rag_service.answer(
                 user_text=parsed.text,
                 correlation_id=correlation_id,
                 history=history,
                 db=db,
+                profile_context=profile_context,
             )
             latency_ms = int((time.perf_counter() - started) * 1000)
             answer_text = str(result.get("text") or "")
