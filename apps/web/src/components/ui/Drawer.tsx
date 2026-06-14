@@ -60,6 +60,9 @@ function DrawerRoot({
   useEffect(() => {
     if (open) {
       previousActive.current = document.activeElement as HTMLElement | null;
+      // Montaje-para-animacion: necesita el effect por el ciclo SSR/portal.
+      // Vercel sugiere <Activity> a futuro. Ref: rendering-activity.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMounted(true);
       requestAnimationFrame(() => setAnimState("open"));
     } else if (mounted) {

@@ -50,6 +50,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const timers = useRef(new Map<string, { remaining: number; startedAt: number; timeout: ReturnType<typeof setTimeout> | null }>());
 
+  // Montaje-solo-en-cliente para el portal de toasts (evita mismatch SSR).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   const dismiss = useCallback((id: string) => {

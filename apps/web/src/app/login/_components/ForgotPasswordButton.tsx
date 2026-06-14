@@ -43,16 +43,26 @@ function ForgotPasswordModal({ open, onOpenChange }: ForgotPasswordModalProps) {
   // Vercel rule: rerender-use-ref-transient-values.
   const cancelRef = useRef(false);
 
-  useEffect(() => {
+  // Reset del form al abrir: patron oficial de React (ajustar estado en render
+  // con rastreador de valor previo), no useEffect. Vercel: rerender-derived-state-no-effect.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setEmail("");
       setSent(false);
       setSubmitting(false);
-      cancelRef.current = false;
-      return () => {
-        cancelRef.current = true;
-      };
     }
+  }
+
+  // El cancelRef sincroniza con un sistema externo (la promesa en vuelo); va en
+  // effect y NO llama setState, asi que no dispara set-state-in-effect.
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current = false;
+    return () => {
+      cancelRef.current = true;
+    };
   }, [open]);
 
   const submit = async () => {

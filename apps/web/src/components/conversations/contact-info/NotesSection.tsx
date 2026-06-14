@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Textarea } from "@/components/ui/Textarea";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
 import { saveNotes } from "@/lib/mock";
@@ -14,10 +14,15 @@ interface NotesSectionProps {
 export function NotesSection({ conversationId, notes }: NotesSectionProps) {
   const [local, setLocal] = useState(notes);
 
-  // Sync local with store when conversationId or stored notes change externally
-  useEffect(() => {
+  // Reset del borrador local al cambiar de conversacion. Patron oficial de React
+  // (ajustar estado durante el render con un rastreador de valor previo), en vez
+  // de useEffect. Ref: react.dev "you might not need an effect" / Vercel
+  // rerender-derived-state-no-effect.
+  const [prevId, setPrevId] = useState(conversationId);
+  if (prevId !== conversationId) {
+    setPrevId(conversationId);
     setLocal(notes);
-  }, [conversationId, notes]);
+  }
 
   useDebouncedSave(conversationId, local, saveNotes, 800);
 

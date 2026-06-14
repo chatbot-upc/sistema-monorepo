@@ -1,15 +1,26 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, MessageCircle, Phone, Wifi, WifiOff } from "lucide-react";
+import {
+  CheckCircle2,
+  MessageCircle,
+  Phone,
+  Trash2,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
+import { IconButton } from "@/components/ui/IconButton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/ToastProvider";
 import { cn } from "@/lib/cn";
 import { useConversationStream } from "@/lib/use-conversation-stream";
 import { requestWsTicket } from "../_actions/ws-ticket";
+import { deleteAction } from "../_actions/conversations";
 import { MessageComposer } from "./MessageComposer";
 import { ConversationActions } from "./ConversationActions";
 import type {
@@ -40,6 +51,22 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   takeover: "Derivada",
 };
 
+// Picks which conversation to open after the active one is deleted: the most
+// recent takeover (an escalation needs attention) else the most recent overall.
+function pickNextConversation(
+  list: ConversationListItem[],
+  excludeId: number,
+): ConversationListItem | null {
+  const remaining = [...list]
+    .filter((c) => c.id !== excludeId)
+    .sort(
+      (a, b) =>
+        new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime(),
+    );
+  if (remaining.length === 0) return null;
+  return remaining.find((c) => c.status === "takeover") ?? remaining[0];
+}
+
 function fmtTime(iso: string | null): string {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("es-PE", {
@@ -62,10 +89,42 @@ export function ConversationsClient({
   activeMessages: initialMessages,
 }: Props) {
   const router = useRouter();
+  const { toast } = useToast();
   const [conversations, setConversations] = useState(initialConversations);
   const [messages, setMessages] = useState<MessageRead[]>(initialMessages);
   const [active, setActive] = useState(activeConversation);
+  const [deleteTarget, setDeleteTarget] = useState<ConversationListItem | null>(
+    null,
+  );
+  const [deleting, startDelete] = useTransition();
   const threadRef = useRef<HTMLDivElement | null>(null);
+
+  // After deleting the active conversation, jump straight to the next sibling
+  // (single navigation) instead of bouncing through /conversations, which
+  // re-fetches and redirects — that double hop is what flashes on screen.
+  const goAfterDeletingActive = (deletedId: number) => {
+    const next = pickNextConversation(conversations, deletedId);
+    router.push(next ? `/conversations/${next.id}` : "/conversations");
+  };
+
+  const handleDelete = (target: ConversationListItem) =>
+    new Promise<void>((resolve, reject) => {
+      startDelete(async () => {
+        const result = await deleteAction(target.id);
+        if (result.ok) {
+          toast.success("Conversación eliminada");
+          setConversations((prev) => prev.filter((c) => c.id !== target.id));
+          setDeleteTarget(null);
+          if (target.id === active.id) {
+            goAfterDeletingActive(target.id);
+          }
+          resolve();
+        } else {
+          toast.error("No se pudo eliminar", { description: result.error });
+          reject(new Error(result.error));
+        }
+      });
+    });
 
   // Reset state when the route changes to a different conversation. The
   // <ConversationsClient key={detail.id}> in [id]/page.tsx forces a remount
@@ -123,9 +182,10 @@ export function ConversationsClient({
       setConversations((prev) =>
         prev.filter((c) => c.id !== data.conversation_id),
       );
-      // Si borraron la que estoy viendo (desde otra pestaña), salgo a la lista.
+      // Si borraron la que estoy viendo (desde otra pestaña / otro admin),
+      // salto directo a la siguiente conversación.
       if (data.conversation_id === active.id) {
-        router.push("/conversations");
+        goAfterDeletingActive(data.conversation_id);
       }
     }
   });
@@ -173,7 +233,7 @@ export function ConversationsClient({
             {sortedConversations.map((c) => {
               const isActive = c.id === active.id;
               return (
-                <li key={c.id}>
+                <li key={c.id} className="group relative">
                   <Link
                     href={`/conversations/${c.id}`}
                     className={cn(
@@ -185,17 +245,35 @@ export function ConversationsClient({
                       <span className="text-[13px] font-semibold truncate">
                         {c.display_name ?? c.student_phone}
                       </span>
-                      <Pill tone={STATUS_TONE[c.status]}>
-                        {STATUS_LABEL[c.status]}
-                      </Pill>
+                      <span className="shrink-0 transition-opacity group-hover:opacity-0">
+                        <Pill tone={STATUS_TONE[c.status]}>
+                          {STATUS_LABEL[c.status]}
+                        </Pill>
+                      </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 text-[11px] text-muted font-mono">
                       <span className="truncate">
                         {c.last_message_preview ?? "(sin mensajes)"}
                       </span>
-                      <span className="shrink-0">{fmtDate(c.opened_at)}</span>
+                      <span className="shrink-0 transition-opacity group-hover:opacity-0">
+                        {fmtDate(c.opened_at)}
+                      </span>
                     </div>
                   </Link>
+                  <IconButton
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleting}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteTarget(c);
+                    }}
+                    aria-label="Eliminar conversación"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted hover:text-danger transition-opacity"
+                  >
+                    <Trash2 size={16} strokeWidth={2} />
+                  </IconButton>
                 </li>
               );
             })}
@@ -224,12 +302,6 @@ export function ConversationsClient({
             <ConversationActions
               conversationId={active.id}
               status={active.status}
-              onDeleted={() => {
-                setConversations((prev) =>
-                  prev.filter((c) => c.id !== active.id),
-                );
-                router.push("/conversations");
-              }}
             />
             <Pill tone={STATUS_TONE[active.status]}>
               {STATUS_LABEL[active.status]}
@@ -296,6 +368,20 @@ export function ConversationsClient({
           )}
         </Card>
       </aside>
+
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          onOpenChange={(v) => !v && setDeleteTarget(null)}
+          title="Eliminar conversación"
+          description={`Se borrará la conversación con ${
+            deleteTarget.display_name ?? deleteTarget.student_phone
+          } y todos sus mensajes de forma permanente. Esta acción no se puede deshacer.`}
+          confirmLabel="Eliminar"
+          variant="destructive"
+          onConfirm={() => handleDelete(deleteTarget)}
+        />
+      )}
     </div>
   );
 }
