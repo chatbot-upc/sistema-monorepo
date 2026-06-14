@@ -1,0 +1,13 @@
+# Contexto de build de la API (context = apps/api).
+# CRITICO: no enviar secretos ni artefactos al daemon/buildx ni al cache.
+.venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+uploads
+firebase-admin-key.json
+*.log
+.env
+.env.*
+README.md
