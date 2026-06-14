@@ -1,0 +1,60 @@
+# Construye y publica las imagenes ARM (linux/arm64) en ghcr.io.
+# Usa runners ARM NATIVOS de GitHub (gratis en repos publicos) -> sin QEMU, mas rapido.
+# Imagenes resultantes (publicas):
+#   ghcr.io/chatbot-upc/chatbot-api
+#   ghcr.io/chatbot-upc/chatbot-web
+# Las consume docker-compose.prod.yml en la EC2 (FrugalStack).
+name: build-images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm   # runner ARM nativo (repos publicos) -> build arm64 sin emular
+    strategy:
+      matrix:
+        include:
+          - name: chatbot-api
+            context: apps/api
+            file: apps/api/Dockerfile
+          - name: chatbot-web
+            context: .
+            file: apps/web/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/chatbot-upc/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
