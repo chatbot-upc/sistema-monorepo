@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { useState, useTransition } from "react";
+import { Suspense, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/Input";
 
 import { ForgotPasswordButton } from "./_components/ForgotPasswordButton";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const callbackUrl = params.get("callbackUrl") ?? "/dashboard";
@@ -119,5 +119,14 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// useSearchParams() requiere un boundary de Suspense para el prerender de Next.
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-bg-2" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

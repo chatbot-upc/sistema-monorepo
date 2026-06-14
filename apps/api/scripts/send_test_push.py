@@ -22,9 +22,9 @@ from chatbot_api.services import push_service
 async def main(admin_id: int = 1) -> None:
     settings = get_settings()
     engine = create_async_engine(settings.database_url)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    async with Session() as db:
+    async with session_factory() as db:
         sent = await push_service.notify_admin(
             db,
             admin_id=admin_id,
