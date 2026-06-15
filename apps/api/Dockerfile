@@ -8,7 +8,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 
-COPY pyproject.toml uv.lock* ./
+# README.md incluido: pyproject lo declara como `readme`, y hatchling lo valida
+# al instalar el proyecto (segundo uv sync). Sin él, el build falla.
+COPY pyproject.toml uv.lock* README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev || uv sync --no-install-project --no-dev
 
