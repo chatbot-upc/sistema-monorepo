@@ -30,7 +30,7 @@ def _should_advance_delivery(current: str | None, new: str) -> bool:
         return current in (None, "sent")
     if current == "failed":
         return False
-    return _DELIVERY_RANK.get(new, 0) > _DELIVERY_RANK.get(current, 0)
+    return _DELIVERY_RANK.get(new, 0) > _DELIVERY_RANK.get(current or "", 0)
 
 
 def build_quoted_snapshot(msg: Message) -> dict[str, object]:

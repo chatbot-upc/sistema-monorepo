@@ -326,16 +326,26 @@ async def _run_reply(
         for tc in tool_calls:
             if tc.get("name") != "reply_to_message":
                 continue
+            raw_n = (tc.get("args") or {}).get("message_number")
+            if raw_n is None:
+                continue
             try:
-                n = int((tc.get("args") or {}).get("message_number"))
+                n = int(raw_n)
             except (TypeError, ValueError):
                 continue
             if 1 <= n <= len(batch):
                 quote_target = batch[n - 1]
-    should_quote = quote_target is not None and bool(quote_target.meta_message_id)
-    reply_context = (
-        {"message_id": quote_target.meta_message_id} if should_quote else None
-    )
+    # El narrowing de quote_target (Message | None) se hace dentro del if para
+    # que mypy lo estreche a Message al construir el contexto/snapshot de la cita.
+    should_quote = False
+    reply_context: dict[str, str] | None = None
+    in_reply_to_id: int | None = None
+    quoted_snapshot: dict[str, object] | None = None
+    if quote_target is not None and quote_target.meta_message_id:
+        should_quote = True
+        reply_context = {"message_id": quote_target.meta_message_id}
+        in_reply_to_id = quote_target.id
+        quoted_snapshot = build_quoted_snapshot(quote_target)
 
     meta_out_id = await whatsapp_service.send_message(
         to=phone, body=answer_text, context=reply_context
@@ -351,8 +361,8 @@ async def _run_reply(
         latency_ms=latency_ms,
         model_used=settings.openai_model,
         meta_message_id=meta_out_id,
-        in_reply_to_id=quote_target.id if should_quote else None,
-        quoted=build_quoted_snapshot(quote_target) if should_quote else None,
+        in_reply_to_id=in_reply_to_id,
+        quoted=quoted_snapshot,
     )
 
     # SW-30: si el agente invocó escalate_to_human, pasamos a takeover.
