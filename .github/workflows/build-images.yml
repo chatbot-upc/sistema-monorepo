@@ -28,6 +28,17 @@ jobs:
           - name: chatbot-web
             context: .
             file: apps/web/Dockerfile
+            # NEXT_PUBLIC_* se hornean en el build (no en runtime). Valores
+            # PÚBLICOS (dominio + config web Firebase) → repo Variables, no Secrets.
+            # Setéalas en GitHub: Settings → Secrets and variables → Actions → Variables.
+            build_args: |
+              NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+              NEXT_PUBLIC_FIREBASE_API_KEY=${{ vars.NEXT_PUBLIC_FIREBASE_API_KEY }}
+              NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ vars.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+              NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ vars.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+              NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+              NEXT_PUBLIC_FIREBASE_APP_ID=${{ vars.NEXT_PUBLIC_FIREBASE_APP_ID }}
+              NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ vars.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,6 +65,7 @@ jobs:
           file: ${{ matrix.file }}
           platforms: linux/arm64
           push: true
+          build-args: ${{ matrix.build_args }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
