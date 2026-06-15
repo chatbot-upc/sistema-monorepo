@@ -1,0 +1,358 @@
+@startuml chatbot_upc
+
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam classFontStyle bold
+skinparam classFontSize 13
+skinparam classHeaderBackgroundColor #FEFEFE
+skinparam ArrowColor #555555
+skinparam ArrowThickness 1.2
+
+top to bottom direction
+
+' ═══════════════════════════════════════════════════════════════
+' LAYER 1 — Presentation
+' ═══════════════════════════════════════════════════════════════
+package "Presentation — API Endpoints" #dae8fc {
+
+    class WebhookRouter <<router>> {
+        + verify_token() : int
+        + receive_event() : 202
+    }
+
+    class AuthRouter <<router>> {
+        + login() : TokenResponse
+        + refresh() : TokenResponse
+        + me() : AdminRead
+    }
+
+    class ConversationsRouter <<router>> {
+        + list(status, dates, phone) : Page
+        + detail(id) : ConvDetail
+        + messages(id) : Page
+    }
+
+    class DocumentsRouter <<router>> {
+        + list(status, type) : Page
+        + upload(file, type) : DocumentRead
+        + delete(id) : void
+        + summary() : DocumentSummary
+    }
+
+    class IntentsRouter <<router>> {
+        + list(active) : Page
+        + detail(id) : IntentRead
+    }
+
+    class MonitoringRouter <<router>> {
+        + health() : MonitoringHealth
+    }
+}
+
+' ═══════════════════════════════════════════════════════════════
+' LAYER 2 — Application
+' ═══════════════════════════════════════════════════════════════
+package "Application — Workers & Services" #d5e8d4 {
+
+    class ProcessMessageWorker <<celery>> {
+        + max_retries : int = 3
+        .. flujo ..
+        + process_incoming_message(parsed, corr_id)
+        - upsert_student()
+        - get_or_create_conversation()
+        - classify_intent()
+        - rag_service.answer()
+        - whatsapp_service.send()
+    }
+
+    class IngestDocumentWorker <<celery>> {
+        + max_retries : int = 2
+        .. flujo ..
+        + ingest_document(document_id)
+        - load_file(s3_key)
+        - chunk_text()
+        - embed_chunks()
+        - bulk_insert_chunks()
+    }
+
+    class WhatsAppWebhookService <<service>> {
+        + verify_signature(body, sig) : bool
+        + extract_messages(payload) : list
+    }
+
+    class IntentClassifierService <<service>> {
+        - _index : _IntentIndex
+        - _threshold : float = 0.55
+        - _llm : ChatOpenAI
+        ---
+        + classify(db, text) : dict
+        - _sbert_classify(text, index) : tuple
+        - _llm_classify(text, index) : tuple
+        + reset_index()
+    }
+
+    class RAGService <<service>> {
+        - _agent : AgentExecutor
+        ---
+        + answer(user_text, corr_id) : dict
+        - _get_agent() : AgentExecutor
+        .. tools ..
+        - search_knowledge_base(query)
+        - escalate_to_human(reason)
+    }
+
+    class WhatsAppService <<service>> {
+        - _client : AsyncClient
+        ---
+        + send_message(to, body) : str
+        - _get_client() : AsyncClient
+    }
+
+    class ConversationService <<service>> {
+        + list_paginated(db, ...) : Page
+        + get_detail(db, id) : ConvDetail
+        + list_messages(db, id) : Page
+    }
+
+    class DocumentService <<service>> {
+        + upload_document(db, file, type) : Document
+        + delete_document(db, id) : void
+    }
+
+    class PushService <<service>> {
+        - _app : firebase.App
+        ---
+        + register_device(db, admin_id, token) : AdminDevice
+        + notify_admin(db, admin_id, title, body) : int
+    }
+}
+
+' ═══════════════════════════════════════════════════════════════
+' LAYER 3 — Repository
+' ═══════════════════════════════════════════════════════════════
+package "Repository — Data Access" #e1d5e7 {
+
+    abstract class BaseRepository {
+        - model : type[M]
+        ---
+        + get(db, id) : M | None
+        + list(db, skip, limit) : list[M]
+        + count(db) : int
+        + create(db, schema) : M
+        + update(db, obj, schema) : M
+        + delete(db, id) : bool
+    }
+
+    class StudentRepository {
+        + upsert_by_phone(db, phone, name) : Student
+        + get_by_phone(db, phone) : Student
+    }
+
+    class ConversationRepository {
+        + list_filtered(db, status, dates, phone) : list
+        + get_with_messages(db, id) : Conversation
+        + get_or_create_open(db, phone) : Conversation
+    }
+
+    class MessageRepository {
+        + list_by_conversation(db, id) : list
+        + create_inbound(db, conv_id, text) : Message
+        + create_bot(db, conv_id, text, ...) : Message
+    }
+
+    class IntentRepository {
+        + list_filtered(db, active) : list
+        + get_by_name(db, name) : Intent
+    }
+
+    class DocumentRepository {
+        + list_filtered(db, status, type) : list
+        + get_by_sha256(db, hash) : Document
+        + status_summary(db) : dict
+    }
+
+    class DocumentChunkRepository {
+        + bulk_insert_chunks(db, chunks) : void
+    }
+}
+
+' ═══════════════════════════════════════════════════════════════
+' LAYER 4 — Domain Models
+' ═══════════════════════════════════════════════════════════════
+package "Domain — ORM Models" #ffe6cc {
+
+    class Student {
+        # phone_e164 : str  <<PK>>
+        display_name : str
+        first_seen_at : datetime
+        last_seen_at : datetime
+    }
+
+    class Admin {
+        # id : int  <<PK>>
+        cognito_sub : str  <<UQ>>
+        email : str  <<UQ>>
+        name : str
+        role : AdminRole
+        active : bool
+    }
+
+    class Conversation {
+        # id : int  <<PK>>
+        student_phone : str  <<FK>>
+        status : ConversationStatus
+        opened_at : datetime
+        closed_at : datetime
+        closed_by : int  <<FK>>
+        takeover_admin : int  <<FK>>
+        meta : dict
+    }
+
+    class Message {
+        # id : int  <<PK>>
+        conversation_id : int  <<FK>>
+        role : MessageRole
+        content : str
+        intent_id : int  <<FK>>
+        input_tokens : int
+        output_tokens : int
+        latency_ms : int
+        retrieved_chunks : list
+    }
+
+    class Intent {
+        # id : int  <<PK>>
+        name : str  <<UQ>>
+        examples : list[str]
+        active : bool
+        created_by : int  <<FK>>
+    }
+
+    class Document {
+        # id : int  <<PK>>
+        title : str
+        sha256 : str  <<UQ>>
+        s3_key : str
+        source_type : DocumentSourceType
+        status : DocumentStatus
+        uploaded_by : int  <<FK>>
+    }
+
+    class DocumentChunk {
+        # id : int  <<PK>>
+        document_id : int  <<FK>>
+        chunk_text : str
+        embedding : Vector(1536)
+        chunk_index : int
+        meta : dict
+    }
+
+    class AdminDevice {
+        # id : int  <<PK>>
+        admin_id : int  <<FK>>
+        fcm_token : str  <<UQ>>
+        platform : str
+    }
+}
+
+' ═══════════════════════════════════════════════════════════════
+' LAYER 5 — Infrastructure
+' ═══════════════════════════════════════════════════════════════
+package "Infrastructure — Core" #f8cecc {
+
+    class Settings <<BaseSettings>> {
+        + DATABASE_URL : str
+        + OPENAI_API_KEY : str
+        + META_ACCESS_TOKEN : str
+        + COGNITO_USER_POOL_ID : str
+        + CELERY_BROKER_URL : str
+        + intent_sbert_threshold : float
+        ---
+        + {static} get_settings() : Settings
+    }
+
+    abstract class Storage {
+        + {abstract} save(key, data) : str
+        + {abstract} get(key) : bytes
+        + {abstract} delete(key) : bool
+    }
+
+    class LocalFileStorage {
+        - base_dir : Path
+        ---
+        + save(key, data) : str
+        + get(key) : bytes
+        + delete(key) : bool
+    }
+
+    class CeleryApp <<Celery>> {
+        + broker : str
+        + backend : str
+        + include : list[str]
+    }
+
+    class AsyncSession <<SQLAlchemy>> {
+        + execute(stmt) : Result
+        + commit() : void
+        + rollback() : void
+        + refresh(obj) : void
+    }
+}
+
+' ═══════════════════════════════════════════════════════════════
+' RELACIONES
+' ═══════════════════════════════════════════════════════════════
+
+' ── Herencia / Realización ──────────────────────────────────────
+StudentRepository       --|> BaseRepository
+ConversationRepository  --|> BaseRepository
+MessageRepository       --|> BaseRepository
+IntentRepository        --|> BaseRepository
+DocumentRepository      --|> BaseRepository
+DocumentChunkRepository --|> BaseRepository
+
+LocalFileStorage        ..|> Storage
+
+' ── API → Services/Workers ─────────────────────────────────────
+WebhookRouter        ..> WhatsAppWebhookService  : verify & parse
+WebhookRouter        ..> ProcessMessageWorker    : dispatch
+ConversationsRouter  ..> ConversationService     : uses
+DocumentsRouter      ..> DocumentService         : uses
+
+' ── Services → Services (mismo layer) ──────────────────────────
+ProcessMessageWorker ..> IntentClassifierService : classify()
+ProcessMessageWorker ..> RAGService              : answer()
+ProcessMessageWorker ..> WhatsAppService         : send()
+DocumentService      ..> IngestDocumentWorker    : dispatch
+
+' ── Services → Repositories ────────────────────────────────────
+ProcessMessageWorker    ..> StudentRepository       : uses
+ProcessMessageWorker    ..> ConversationRepository  : uses
+ProcessMessageWorker    ..> MessageRepository       : uses
+IntentClassifierService ..> IntentRepository        : uses
+ConversationService     ..> ConversationRepository  : uses
+DocumentService         ..> DocumentRepository      : uses
+IngestDocumentWorker    ..> DocumentRepository      : uses
+IngestDocumentWorker    ..> DocumentChunkRepository : uses
+
+' ── Repositories → Models ──────────────────────────────────────
+StudentRepository       ..> Student
+ConversationRepository  ..> Conversation
+MessageRepository       ..> Message
+IntentRepository        ..> Intent
+DocumentRepository      ..> Document
+DocumentChunkRepository ..> DocumentChunk
+
+' ── Asociaciones entre Modelos (FK) ────────────────────────────
+Student       "1" <-- "N" Conversation  : student_phone
+Conversation  "1" <-- "N" Message       : conversation_id
+Intent        "1" <-- "N" Message       : intent_id
+Document      "1" *-- "N" DocumentChunk : document_id
+Admin         "1" *-- "N" AdminDevice   : admin_id
+
+@enduml
