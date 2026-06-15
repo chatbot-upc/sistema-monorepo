@@ -103,7 +103,7 @@ async def test_sbert_path_notifies_student_and_pushes_admin(
 
     sent_payloads: list[dict[str, str]] = []
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         sent_payloads.append({"to": to, "body": body})
         return f"wamid.sw29.{len(sent_payloads)}"
 
@@ -192,7 +192,7 @@ async def test_llm_path_pushes_admin_without_extra_notice(
 
     sent_payloads: list[dict[str, str]] = []
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         sent_payloads.append({"to": to, "body": body})
         return f"wamid.sw29.llm.{len(sent_payloads)}"
 

@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.models import Message
-from chatbot_api.models.enums import MessageRole
+from chatbot_api.models.enums import MessageDeliveryStatus, MessageRole
 
 from .base import BaseRepository
 
@@ -16,6 +16,35 @@ class _MsgCreate(BaseModel):
 
 class _MsgUpdate(BaseModel):
     pass
+
+
+_DELIVERY_RANK = {"sent": 1, "delivered": 2, "read": 3}
+
+
+def _should_advance_delivery(current: str | None, new: str) -> bool:
+    """Guarda monotónica: nunca retroceder (p. ej. de read a delivered).
+
+    `failed` solo aplica si el mensaje aún no fue entregado/leído.
+    """
+    if new == "failed":
+        return current in (None, "sent")
+    if current == "failed":
+        return False
+    return _DELIVERY_RANK.get(new, 0) > _DELIVERY_RANK.get(current, 0)
+
+
+def build_quoted_snapshot(msg: Message) -> dict[str, object]:
+    """Congela el snapshot del mensaje citado para almacenarlo en Message.quoted.
+
+    Inmutable por diseño: los mensajes no se editan, así que el snapshot nunca se
+    desincroniza. Si el original se borra (FK SET NULL), el texto citado persiste.
+    """
+    return {
+        "id": msg.id,
+        "role": msg.role.value,
+        "content": (msg.content or "")[:120],
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }
 
 
 class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
@@ -74,6 +103,18 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         rows.reverse()
         return rows
 
+    async def list_by_ids(
+        self, db: AsyncSession, ids: list[int]
+    ) -> list[Message]:
+        """Carga mensajes por una lista de ids (orden no garantizado).
+
+        Usado por el debounce para consolidar el lote de mensajes pendientes.
+        """
+        if not ids:
+            return []
+        result = await db.execute(select(Message).where(Message.id.in_(ids)))
+        return list(result.scalars().all())
+
     async def get_by_meta_id(
         self, db: AsyncSession, meta_message_id: str
     ) -> Message | None:
@@ -82,6 +123,20 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         )
         return result.scalars().first()
 
+    async def update_delivery_status(
+        self, db: AsyncSession, meta_message_id: str, status: str
+    ) -> Message | None:
+        """Avanza el acuse de un saliente. Devuelve el Message si cambió, si no None.
+
+        No-op (None) si el mensaje no existe o el estado no avanza (monotónico).
+        """
+        msg = await self.get_by_meta_id(db, meta_message_id)
+        if msg is None or not _should_advance_delivery(msg.delivery_status, status):
+            return None
+        msg.delivery_status = status
+        await db.flush()
+        return msg
+
     async def create_inbound(
         self,
         db: AsyncSession,
@@ -89,6 +144,8 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         conversation_id: int,
         content: str,
         meta_message_id: str,
+        in_reply_to_id: int | None = None,
+        quoted: dict[str, object] | None = None,
     ) -> Message | None:
         """Insert an incoming WhatsApp message. Returns None if meta_message_id duplicado."""
         existing = await self.get_by_meta_id(db, meta_message_id)
@@ -100,6 +157,8 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
             content=content,
             retrieved_chunks=[],
             meta_message_id=meta_message_id,
+            in_reply_to_id=in_reply_to_id,
+            quoted=quoted,
         )
         db.add(msg)
         await db.flush()
@@ -113,6 +172,8 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         content: str,
         admin_id: int,
         meta_message_id: str | None = None,
+        in_reply_to_id: int | None = None,
+        quoted: dict[str, object] | None = None,
     ) -> Message:
         msg = Message(
             conversation_id=conversation_id,
@@ -120,6 +181,9 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
             content=content,
             admin_id=admin_id,
             meta_message_id=meta_message_id,
+            in_reply_to_id=in_reply_to_id,
+            quoted=quoted,
+            delivery_status=MessageDeliveryStatus.sent.value,
         )
         db.add(msg)
         await db.flush()
@@ -137,6 +201,8 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
         latency_ms: int | None = None,
         model_used: str | None = None,
         meta_message_id: str | None = None,
+        in_reply_to_id: int | None = None,
+        quoted: dict[str, object] | None = None,
     ) -> Message:
         msg = Message(
             conversation_id=conversation_id,
@@ -148,6 +214,9 @@ class MessageRepository(BaseRepository[Message, _MsgCreate, _MsgUpdate]):
             latency_ms=latency_ms,
             model_used=model_used,
             meta_message_id=meta_message_id,
+            in_reply_to_id=in_reply_to_id,
+            quoted=quoted,
+            delivery_status=MessageDeliveryStatus.sent.value,
         )
         db.add(msg)
         await db.flush()

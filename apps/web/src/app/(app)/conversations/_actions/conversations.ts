@@ -2,14 +2,28 @@
 
 import { ApiError } from "@/lib/api/client";
 import {
+  assignTag,
   closeConversation,
+  createNote,
   deleteConversation,
+  deleteNote,
+  fetchHistory,
+  fetchNotes,
   reopenConversation,
   releaseConversation,
   sendConversationMessage,
+  setStar,
   takeoverConversation,
+  unassignTag,
+  updateContact,
+  updateNote,
+  type ConversationDetail,
+  type ConversationHistory,
+  type InternalNote,
   type SendMessageResponse,
+  type Tag,
 } from "@/lib/api/conversations";
+import { createTag, fetchTags, type TagColor } from "@/lib/api/tags";
 
 export type ActionResult<T = void> =
   | { ok: true; data: T }
@@ -46,6 +60,7 @@ function validateId(id: number): ActionResult<never> | null {
 export async function sendMessageAction(
   id: number,
   body: string,
+  inReplyToId?: number | null,
 ): Promise<ActionResult<SendMessageResponse>> {
   const idErr = validateId(id);
   if (idErr) return idErr;
@@ -57,7 +72,7 @@ export async function sendMessageAction(
     return { ok: false, status: 400, error: "Máximo 4096 caracteres." };
   }
   try {
-    const data = await sendConversationMessage(id, trimmed);
+    const data = await sendConversationMessage(id, trimmed, inReplyToId);
     return { ok: true, data };
   } catch (err) {
     return toError(err, "No se pudo enviar el mensaje.");
@@ -116,5 +131,169 @@ export async function deleteAction(id: number): Promise<ActionResult> {
     return { ok: true, data: undefined };
   } catch (err) {
     return toError(err, "No se pudo eliminar la conversación.");
+  }
+}
+
+// ── Ficha de contacto ────────────────────────────────────────────────
+
+export async function updateContactAction(
+  id: number,
+  email: string | null,
+): Promise<ActionResult<ConversationDetail>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await updateContact(id, email);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo actualizar el correo.");
+  }
+}
+
+export async function setStarAction(
+  id: number,
+  starred: boolean,
+): Promise<ActionResult<ConversationDetail>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await setStar(id, starred);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo actualizar la conversación.");
+  }
+}
+
+export async function historyAction(
+  id: number,
+): Promise<ActionResult<ConversationHistory>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await fetchHistory(id);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo cargar el historial.");
+  }
+}
+
+// ── Notas internas ───────────────────────────────────────────────────
+
+export async function listNotesAction(
+  id: number,
+): Promise<ActionResult<InternalNote[]>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await fetchNotes(id);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudieron cargar las notas.");
+  }
+}
+
+export async function createNoteAction(
+  id: number,
+  body: string,
+): Promise<ActionResult<InternalNote>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return { ok: false, status: 400, error: "La nota no puede estar vacía." };
+  }
+  try {
+    const data = await createNote(id, trimmed);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo crear la nota.");
+  }
+}
+
+export async function updateNoteAction(
+  id: number,
+  noteId: number,
+  body: string,
+): Promise<ActionResult<InternalNote>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return { ok: false, status: 400, error: "La nota no puede estar vacía." };
+  }
+  try {
+    const data = await updateNote(id, noteId, trimmed);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo actualizar la nota.");
+  }
+}
+
+export async function deleteNoteAction(
+  id: number,
+  noteId: number,
+): Promise<ActionResult> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    await deleteNote(id, noteId);
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return toError(err, "No se pudo eliminar la nota.");
+  }
+}
+
+// ── Etiquetas ────────────────────────────────────────────────────────
+
+export async function listTagsAction(): Promise<ActionResult<Tag[]>> {
+  try {
+    const data = await fetchTags();
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudieron cargar las etiquetas.");
+  }
+}
+
+export async function createTagAction(
+  name: string,
+  color: TagColor,
+): Promise<ActionResult<Tag>> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { ok: false, status: 400, error: "El nombre no puede estar vacío." };
+  }
+  try {
+    const data = await createTag(trimmed, color);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo crear la etiqueta.");
+  }
+}
+
+export async function assignTagAction(
+  id: number,
+  tagId: number,
+): Promise<ActionResult<ConversationDetail>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await assignTag(id, tagId);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo asignar la etiqueta.");
+  }
+}
+
+export async function unassignTagAction(
+  id: number,
+  tagId: number,
+): Promise<ActionResult<ConversationDetail>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await unassignTag(id, tagId);
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudo quitar la etiqueta.");
   }
 }

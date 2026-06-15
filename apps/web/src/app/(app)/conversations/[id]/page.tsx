@@ -31,6 +31,7 @@ export default async function ConversationDetailPage(props: {
 
   return (
     <ConversationsClient
+      key={detail.id}
       conversations={listPage.items as ConversationListItem[]}
       activeConversation={detail as ConversationDetail}
       activeMessages={messagesPage.items as MessageRead[]}

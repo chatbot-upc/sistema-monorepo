@@ -8,6 +8,12 @@ export interface StudentRef {
   display_name: string | null;
 }
 
+export interface Tag {
+  id: number;
+  name: string;
+  color: string;
+}
+
 export interface ConversationListItem {
   id: number;
   student_phone: string;
@@ -17,6 +23,14 @@ export interface ConversationListItem {
   closed_at: string | null;
   message_count: number;
   last_message_preview: string | null;
+  starred: boolean;
+}
+
+export interface QuotedSnapshot {
+  id: number;
+  role: MessageRole;
+  content: string;
+  created_at: string | null;
 }
 
 export interface MessageRead {
@@ -32,17 +46,56 @@ export interface MessageRead {
   latency_ms: number | null;
   meta_message_id: string | null;
   created_at: string;
+  in_reply_to_id: number | null;
+  quoted: QuotedSnapshot | null;
+  delivery_status: DeliveryStatus | null;
+}
+
+export type DeliveryStatus = "sent" | "delivered" | "read" | "failed";
+
+export interface StudentProfile {
+  phone_e164: string;
+  full_name: string;
+  career: string | null;
+  cycle: number | null;
+  campus: string | null;
+  modality: string | null;
+  academic_status: string | null;
+  failed_courses: string | null;
+  enrollment_turn: string | null;
+  english_level: number | null;
+  elective_credits: number | null;
+  internship_credits: number | null;
 }
 
 export interface ConversationDetail {
   id: number;
   student_phone: string;
   display_name: string | null;
+  email: string | null;
   status: ConversationStatus;
   opened_at: string;
   closed_at: string | null;
   takeover_admin: number | null;
+  starred: boolean;
+  student_profile: StudentProfile | null;
+  tags: Tag[];
   messages: MessageRead[];
+}
+
+export interface InternalNote {
+  id: number;
+  body: string;
+  author_admin_id: number | null;
+  author_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationHistory {
+  total_conversations: number;
+  total_messages: number;
+  first_contact: string | null;
 }
 
 export interface Page<T> {
@@ -103,12 +156,13 @@ export interface SendMessageResponse {
 export async function sendConversationMessage(
   conversationId: number,
   body: string,
+  inReplyToId?: number | null,
 ): Promise<SendMessageResponse> {
   return apiFetch<SendMessageResponse>(
     `/api/v1/conversations/${conversationId}/messages`,
     {
       method: "POST",
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, in_reply_to_id: inReplyToId ?? null }),
     },
   );
 }
@@ -151,4 +205,97 @@ export async function deleteConversation(
   return apiFetch<void>(`/api/v1/conversations/${conversationId}`, {
     method: "DELETE",
   });
+}
+
+// ── Ficha de contacto ────────────────────────────────────────────────
+
+export async function updateContact(
+  conversationId: number,
+  email: string | null,
+): Promise<ConversationDetail> {
+  return apiFetch<ConversationDetail>(
+    `/api/v1/conversations/${conversationId}/contact`,
+    { method: "PATCH", body: JSON.stringify({ email }) },
+  );
+}
+
+export async function setStar(
+  conversationId: number,
+  starred: boolean,
+): Promise<ConversationDetail> {
+  return apiFetch<ConversationDetail>(
+    `/api/v1/conversations/${conversationId}/star`,
+    { method: "PUT", body: JSON.stringify({ starred }) },
+  );
+}
+
+export async function fetchHistory(
+  conversationId: number,
+): Promise<ConversationHistory> {
+  return apiFetch<ConversationHistory>(
+    `/api/v1/conversations/${conversationId}/history`,
+  );
+}
+
+// ── Notas internas ───────────────────────────────────────────────────
+
+export async function fetchNotes(
+  conversationId: number,
+): Promise<InternalNote[]> {
+  return apiFetch<InternalNote[]>(
+    `/api/v1/conversations/${conversationId}/notes`,
+  );
+}
+
+export async function createNote(
+  conversationId: number,
+  body: string,
+): Promise<InternalNote> {
+  return apiFetch<InternalNote>(
+    `/api/v1/conversations/${conversationId}/notes`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+}
+
+export async function updateNote(
+  conversationId: number,
+  noteId: number,
+  body: string,
+): Promise<InternalNote> {
+  return apiFetch<InternalNote>(
+    `/api/v1/conversations/${conversationId}/notes/${noteId}`,
+    { method: "PATCH", body: JSON.stringify({ body }) },
+  );
+}
+
+export async function deleteNote(
+  conversationId: number,
+  noteId: number,
+): Promise<void> {
+  return apiFetch<void>(
+    `/api/v1/conversations/${conversationId}/notes/${noteId}`,
+    { method: "DELETE" },
+  );
+}
+
+// ── Etiquetas de la conversación ─────────────────────────────────────
+
+export async function assignTag(
+  conversationId: number,
+  tagId: number,
+): Promise<ConversationDetail> {
+  return apiFetch<ConversationDetail>(
+    `/api/v1/conversations/${conversationId}/tags`,
+    { method: "POST", body: JSON.stringify({ tag_id: tagId }) },
+  );
+}
+
+export async function unassignTag(
+  conversationId: number,
+  tagId: number,
+): Promise<ConversationDetail> {
+  return apiFetch<ConversationDetail>(
+    `/api/v1/conversations/${conversationId}/tags/${tagId}`,
+    { method: "DELETE" },
+  );
 }

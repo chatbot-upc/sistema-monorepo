@@ -245,7 +245,7 @@ async def test_first_turn_history_is_empty(
 
     sent: list[str] = []
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         sent.append(body)
         return f"wamid.mem.first.{len(sent)}"
 

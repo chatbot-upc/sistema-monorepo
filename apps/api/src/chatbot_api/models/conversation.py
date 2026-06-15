@@ -11,6 +11,7 @@ from .enums import ConversationStatus
 if TYPE_CHECKING:
     from .message import Message
     from .student import Student
+    from .tag import Tag
 
 
 class Conversation(IdPk, Timestamped, Base):
@@ -41,10 +42,16 @@ class Conversation(IdPk, Timestamped, Base):
         nullable=True,
     )
     meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    starred: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     student: Mapped["Student"] = relationship(lazy="selectin")
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+    tags: Mapped[list["Tag"]] = relationship(
+        secondary="conversation_tags",
+        lazy="selectin",
+        order_by="Tag.name",
     )

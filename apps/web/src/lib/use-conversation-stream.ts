@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 export type StreamEventType =
   | "hello"
   | "message.created"
+  | "message.status_changed"
   | "conversation.escalated"
   | "conversation.status_changed"
   | "conversation.deleted"

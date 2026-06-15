@@ -72,7 +72,7 @@ async def test_first_contact_sends_welcome_then_rag(
     rag_text = "Matricula: revisa el cronograma."
     sent_bodies: list[str] = []
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         sent_bodies.append(body)
         return f"wamid.first.bot.{len(sent_bodies)}"
 
@@ -148,7 +148,7 @@ async def test_returning_student_no_welcome(
 
     sent_bodies: list[str] = []
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         sent_bodies.append(body)
         return f"wamid.ret.bot.{len(sent_bodies)}"
 

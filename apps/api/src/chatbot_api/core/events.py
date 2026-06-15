@@ -49,6 +49,9 @@ def message_to_event_payload(msg: Message) -> dict[str, Any]:
         "intent_id": msg.intent_id,
         "latency_ms": msg.latency_ms,
         "admin_id": msg.admin_id,
+        "in_reply_to_id": msg.in_reply_to_id,
+        "quoted": msg.quoted,
+        "delivery_status": msg.delivery_status,
     }
 
 
