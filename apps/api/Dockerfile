@@ -22,6 +22,11 @@ WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
+# alembic.ini + migraciones: necesarias para `alembic upgrade head` en prod
+# (servicio `migrate` del docker-compose). Sin esto el contenedor no puede
+# crear el esquema de la BD.
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \

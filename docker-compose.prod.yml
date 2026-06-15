@@ -38,6 +38,19 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: crea/actualiza el esquema (alembic) y siembra el admin del CRM.
+  # Corre antes de api/worker y termina; ellos esperan a que complete OK.
+  migrate:
+    image: ghcr.io/chatbot-upc/chatbot-api:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m chatbot_api.scripts.bootstrap_admin"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     image: ghcr.io/chatbot-upc/chatbot-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -47,6 +60,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     expose:
       - "8000"
     healthcheck:
@@ -66,6 +81,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   web:
     image: ghcr.io/chatbot-upc/chatbot-web:${IMAGE_TAG:-latest}

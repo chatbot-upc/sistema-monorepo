@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     cognito_client_id: str = ""
     cognito_region: str = "us-east-1"
 
+    # Admin del CRM a sembrar en la tabla `admins` (bootstrap_admin, corrido por
+    # el servicio `migrate` en prod). Debe coincidir con el email del usuario de
+    # Cognito. Vacío = no se siembra (en local se usa el stub X-Dev-User).
+    admin_email: str = ""
+    admin_name: str = ""
+
     firebase_project_id: str = ""
     firebase_client_email: str = ""
     firebase_private_key: str = ""
