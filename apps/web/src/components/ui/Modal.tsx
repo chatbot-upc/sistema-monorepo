@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 import { IconButton } from "./IconButton";
 
 type Size = "sm" | "md" | "lg" | "xl";
@@ -72,6 +73,9 @@ function ModalRoot({
   useEffect(() => {
     if (open) {
       previousActive.current = document.activeElement as HTMLElement | null;
+      // Montaje-para-animacion: necesita el effect por el ciclo SSR/portal.
+      // Vercel sugiere <Activity> a futuro. Ref: rendering-activity.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMounted(true);
       requestAnimationFrame(() => setAnimState("open"));
     } else if (mounted) {
@@ -86,11 +90,7 @@ function ModalRoot({
 
   useLayoutEffect(() => {
     if (!mounted) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    return lockBodyScroll();
   }, [mounted]);
 
   useEffect(() => {

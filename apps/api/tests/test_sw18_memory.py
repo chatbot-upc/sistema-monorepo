@@ -191,6 +191,7 @@ async def test_second_turn_feeds_history_to_rag(
         history: list[dict[str, str]] | None = None,
         db: object | None = None,
         profile_context: str | None = None,
+        program: str | None = None,
     ) -> dict[str, Any]:
         captured["user_text"] = user_text
         captured["history"] = list(history or [])
@@ -239,13 +240,14 @@ async def test_first_turn_history_is_empty(
         history: list[dict[str, str]] | None = None,
         db: object | None = None,
         profile_context: str | None = None,
+        program: str | None = None,
     ) -> dict[str, Any]:
         captured["history"] = list(history or [])
         return {"text": "primera respuesta", "tool_calls": []}
 
     sent: list[str] = []
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         sent.append(body)
         return f"wamid.mem.first.{len(sent)}"
 

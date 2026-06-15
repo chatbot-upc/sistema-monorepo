@@ -1,11 +1,13 @@
 """Business logic for reports. Functional module (RORO), no classes."""
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chatbot_api.core.timezone import to_local as _local
+from chatbot_api.core.timezone import today_local_start
 from chatbot_api.models import (
     Conversation,
     ConversationIntent,
@@ -13,7 +15,11 @@ from chatbot_api.models import (
     Intent,
     Message,
 )
-from chatbot_api.models.enums import ConversationStatus, DocumentStatus
+from chatbot_api.models.enums import (
+    ConversationStatus,
+    DocumentStatus,
+    MessageRole,
+)
 
 
 async def get_dashboard_stats(db: AsyncSession) -> dict[str, Any]:
@@ -22,7 +28,7 @@ async def get_dashboard_stats(db: AsyncSession) -> dict[str, Any]:
     Devuelve los 4 KPIs de la HU (activas, escaladas, tema top, certeza) más
     métricas de soporte (latencia, conteos del día) que el dashboard consume.
     """
-    today_start = datetime.combine(date.today(), time.min)
+    today_start = today_local_start()
 
     conversations_total = (
         await db.execute(select(func.count(Conversation.id)))
@@ -44,13 +50,15 @@ async def get_dashboard_stats(db: AsyncSession) -> dict[str, Any]:
     conversations_today = (
         await db.execute(
             select(func.count(Conversation.id)).where(
-                Conversation.opened_at >= today_start
+                _local(Conversation.opened_at) >= today_start
             )
         )
     ).scalar_one()
     messages_today = (
         await db.execute(
-            select(func.count(Message.id)).where(Message.created_at >= today_start)
+            select(func.count(Message.id)).where(
+                _local(Message.created_at) >= today_start
+            )
         )
     ).scalar_one()
     documents_indexed = (
@@ -72,7 +80,7 @@ async def get_dashboard_stats(db: AsyncSession) -> dict[str, Any]:
                 func.count(ConversationIntent.intent_id).label("intent_count"),
             )
             .join(Intent, Intent.id == ConversationIntent.intent_id)
-            .where(ConversationIntent.detected_at >= today_start)
+            .where(_local(ConversationIntent.detected_at) >= today_start)
             .group_by(Intent.name)
             .order_by(func.count(ConversationIntent.intent_id).desc())
             .limit(1)
@@ -88,7 +96,7 @@ async def get_dashboard_stats(db: AsyncSession) -> dict[str, Any]:
     avg_confidence = (
         await db.execute(
             select(func.avg(ConversationIntent.confidence)).where(
-                ConversationIntent.detected_at >= today_start
+                _local(ConversationIntent.detected_at) >= today_start
             )
         )
     ).scalar()
@@ -97,7 +105,7 @@ async def get_dashboard_stats(db: AsyncSession) -> dict[str, Any]:
     avg_latency = (
         await db.execute(
             select(func.avg(Message.latency_ms)).where(
-                Message.created_at >= today_start,
+                _local(Message.created_at) >= today_start,
                 Message.latency_ms.is_not(None),
             )
         )
@@ -126,14 +134,104 @@ async def get_conversations_by_day(
 ) -> list[dict[str, Any]]:
     from_dt = datetime.combine(from_date, time.min)
     to_dt = datetime.combine(to_date, time.max)
-    day_col = cast(Conversation.opened_at, Date).label("day")
+    conv_local = _local(Conversation.opened_at)
+    day_col = cast(conv_local, Date).label("day")
     result = await db.execute(
         select(day_col, func.count(Conversation.id).label("conv_count"))
-        .where(Conversation.opened_at >= from_dt, Conversation.opened_at <= to_dt)
+        .where(conv_local >= from_dt, conv_local <= to_dt)
         .group_by(day_col)
         .order_by(day_col)
     )
     return [{"date": row.day.isoformat(), "count": int(row.conv_count)} for row in result]
+
+
+async def _summary_counts(
+    db: AsyncSession, from_dt: datetime, to_dt: datetime
+) -> tuple[int, int, int, int]:
+    """(total convs, escaladas, mensajes bot, mensajes bot con fallback) en rango."""
+    conv_local = _local(Conversation.opened_at)
+    msg_local = _local(Message.created_at)
+    total = (
+        await db.execute(
+            select(func.count(Conversation.id)).where(
+                conv_local >= from_dt, conv_local <= to_dt
+            )
+        )
+    ).scalar_one()
+    escalated = (
+        await db.execute(
+            select(func.count(Conversation.id)).where(
+                conv_local >= from_dt,
+                conv_local <= to_dt,
+                Conversation.status == ConversationStatus.takeover,
+            )
+        )
+    ).scalar_one()
+    bot_msgs = (
+        await db.execute(
+            select(func.count(Message.id)).where(
+                msg_local >= from_dt,
+                msg_local <= to_dt,
+                Message.role == MessageRole.bot,
+            )
+        )
+    ).scalar_one()
+    fallback_msgs = (
+        await db.execute(
+            select(func.count(Message.id)).where(
+                msg_local >= from_dt,
+                msg_local <= to_dt,
+                Message.role == MessageRole.bot,
+                Message.intent_used_fallback.is_(True),
+            )
+        )
+    ).scalar_one()
+    return int(total), int(escalated), int(bot_msgs), int(fallback_msgs)
+
+
+async def get_report_summary(
+    db: AsyncSession,
+    *,
+    from_date: date,
+    to_date: date,
+) -> dict[str, Any]:
+    """KPIs del rango + comparación contra el periodo inmediatamente anterior."""
+    from_dt = datetime.combine(from_date, time.min)
+    to_dt = datetime.combine(to_date, time.max)
+
+    period_days = (to_date - from_date).days + 1
+    prev_to_date = from_date - timedelta(days=1)
+    prev_from_date = prev_to_date - timedelta(days=period_days - 1)
+    prev_from_dt = datetime.combine(prev_from_date, time.min)
+    prev_to_dt = datetime.combine(prev_to_date, time.max)
+
+    total, escalated, bot_msgs, fallback_msgs = await _summary_counts(
+        db, from_dt, to_dt
+    )
+    p_total, _p_esc, p_bot, p_fallback = await _summary_counts(
+        db, prev_from_dt, prev_to_dt
+    )
+
+    resolved = total - escalated
+    fallback_rate = round(fallback_msgs * 100 / bot_msgs, 1) if bot_msgs else 0.0
+    prev_fallback_rate = round(p_fallback * 100 / p_bot, 1) if p_bot else 0.0
+
+    return {
+        "total": total,
+        "total_change_pct": (
+            round((total - p_total) * 100 / p_total, 1) if p_total else None
+        ),
+        "resolved_by_bot": resolved,
+        "resolved_pct_of_total": round(resolved * 100 / total, 1) if total else 0.0,
+        "escalated": escalated,
+        "escalated_pct_of_total": (
+            round(escalated * 100 / total, 1) if total else 0.0
+        ),
+        "fallback_rate": fallback_rate,
+        "fallback_change_pp": (
+            round(fallback_rate - prev_fallback_rate, 1) if p_bot else None
+        ),
+    }
 
 
 async def get_intent_distribution(
@@ -144,6 +242,7 @@ async def get_intent_distribution(
 ) -> list[dict[str, Any]]:
     from_dt = datetime.combine(from_date, time.min)
     to_dt = datetime.combine(to_date, time.max)
+    detected_local = _local(ConversationIntent.detected_at)
     result = await db.execute(
         select(
             Intent.name.label("intent_name"),
@@ -151,8 +250,8 @@ async def get_intent_distribution(
         )
         .join(Intent, Intent.id == ConversationIntent.intent_id)
         .where(
-            ConversationIntent.detected_at >= from_dt,
-            ConversationIntent.detected_at <= to_dt,
+            detected_local >= from_dt,
+            detected_local <= to_dt,
         )
         .group_by(Intent.name)
         .order_by(func.count(ConversationIntent.intent_id).desc())

@@ -27,6 +27,14 @@ prefix = "ChatbotUpc"
 tags = {"Project": "chatbot-upc", "Mode": mode, "ManagedBy": "cdk"}
 stacks = []
 
+# ---------- CD: identidad para GitHub Actions (ciclo de vida propio) ----------
+# Independiente del modo. Se despliega 1 vez y NO se destruye en las rafagas:
+#   cdk deploy ChatbotUpc-Cicd      # persistente
+#   cdk destroy ChatbotUpc-Frugal   # tear-down de rafaga (NO --all)
+from stacks.cicd_stack import CicdStack
+
+stacks.append(CicdStack(app, f"{prefix}-Cicd", env=env))
+
 if cfg.single_node:
     # ---------- ARQUITECTURA REAL (frugal): 1 EC2 con todo ----------
     from stacks.frugal_stack import FrugalStack
@@ -55,7 +63,7 @@ else:
         app, f"{prefix}-Observability", cfg=cfg,
         alb=compute.alb, db=data.db, queue=data.queue, dlq=data.dlq, env=env,
     )
-    stacks = [network, data, auth, compute, observability]
+    stacks.extend([network, data, auth, compute, observability])
 
 # Etiquetas en todos los recursos (rastreo de costos en Cost Explorer)
 for stack in stacks:

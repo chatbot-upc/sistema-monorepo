@@ -6,6 +6,7 @@ export type DocumentStatus = "pending" | "indexing" | "indexed" | "error";
 export interface DocumentRead {
   id: number;
   title: string;
+  program: string | null;
   source_type: DocumentSourceType;
   source_url: string | null;
   s3_key: string;
@@ -64,6 +65,15 @@ export async function uploadDocument(form: FormData): Promise<DocumentRead> {
     method: "POST",
     body: form,
   });
+}
+
+export interface ProgramOption {
+  value: string;
+  label: string;
+}
+
+export async function fetchProgramOptions(): Promise<ProgramOption[]> {
+  return apiFetch<ProgramOption[]>("/api/v1/documents/programs");
 }
 
 export async function deleteDocument(id: number): Promise<void> {

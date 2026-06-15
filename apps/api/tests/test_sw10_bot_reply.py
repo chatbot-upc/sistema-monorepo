@@ -138,7 +138,7 @@ async def test_worker_persists_student_and_bot(
 
     fake_answer.assert_awaited_once()
     fake_send.assert_awaited_once_with(
-        to=phone, body="Matricula inicia el 1 de junio."
+        to=phone, body="Matricula inicia el 1 de junio.", context=None
     )
 
     engine = create_async_engine(postgres_url)

@@ -66,7 +66,10 @@
   --shadow-modal: 0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
 
   /* Z-index scale */
-  --z-dropdown: 30;
+  /* dropdown va por encima de modal/drawer (55 > 50) para que los menús y
+     selects abiertos DENTRO de un drawer/modal queden visibles; debajo de
+     toast (60) para no tapar notificaciones. */
+  --z-dropdown: 55;
   --z-overlay: 40;
   --z-modal: 50;
   --z-drawer: 50;
@@ -168,6 +171,13 @@ a {
 [role="dialog"]:focus,
 [role="menu"]:focus-visible,
 [role="menu"]:focus {
+  outline: none;
+}
+
+/* El foco se marca con el borde del contenedor (focus-within); el control
+   interno no debe dibujar su propio outline rojo. */
+.no-focus-outline:focus-visible,
+.no-focus-outline:focus {
   outline: none;
 }
 

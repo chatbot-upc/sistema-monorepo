@@ -4,20 +4,39 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { FileDrop } from "@/components/ui/FileDrop";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/ToastProvider";
+import type { ProgramOption } from "@/lib/api/documents";
 import { uploadDocumentAction } from "../_actions/documents";
 
 interface UploadDrawerProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  programOptions: ProgramOption[];
 }
 
-export function UploadDrawer({ open, onOpenChange }: UploadDrawerProps) {
+// "" = General (todas las carreras) → el backend lo guarda como NULL.
+const GENERAL = "";
+
+export function UploadDrawer({
+  open,
+  onOpenChange,
+  programOptions,
+}: UploadDrawerProps) {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
+  const [program, setProgram] = useState<string>(GENERAL);
   const [isPending, startTransition] = useTransition();
 
-  const reset = () => setFiles([]);
+  const selectOptions = [
+    { value: GENERAL, label: "General (todas las carreras)" },
+    ...programOptions,
+  ];
+
+  const reset = () => {
+    setFiles([]);
+    setProgram(GENERAL);
+  };
 
   const handleSubmit = () => {
     if (files.length === 0) {
@@ -28,6 +47,7 @@ export function UploadDrawer({ open, onOpenChange }: UploadDrawerProps) {
     const fd = new FormData();
     fd.set("file", file);
     fd.set("source_type", "upload");
+    fd.set("program", program);
 
     startTransition(async () => {
       const res = await uploadDocumentAction(fd);
@@ -73,6 +93,23 @@ export function UploadDrawer({ open, onOpenChange }: UploadDrawerProps) {
             toast.error("Archivo no válido", { description: msg })
           }
         />
+        <div className="flex flex-col gap-2">
+          <label className="text-[13px] font-medium text-fg-2">
+            Programa / carrera
+          </label>
+          <Select
+            options={selectOptions}
+            value={program}
+            onChange={setProgram}
+            placeholder="General (todas las carreras)"
+            align="start"
+          />
+          <p className="text-[11px] text-muted">
+            Si es una malla de carrera, elige cuál: el bot la usará solo con
+            alumnos de ese programa. Para reglamentos, fechas o becas, deja{" "}
+            <span className="font-medium">General</span>.
+          </p>
+        </div>
       </Drawer.Body>
       <Drawer.Footer>
         <Button

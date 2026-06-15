@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@theme {
+  /* Clean high-contrast canvas — no cream, neutral toward the brand hue */
+  --color-bg: #ffffff;
+  --color-bg-2: #f7f6f7;
+  --color-surface: #ffffff;
+  --color-ink: #17151a;
+  --color-ink-2: #4a4750;
+  --color-muted: #78747e;
+  --color-line: #ebe9ee;
+  --color-line-2: #ddd9e2;
+
+  /* UPC red — committed accent */
+  --color-brand: #d50000;
+  --color-brand-deep: #a60000;
+  --color-brand-soft: #ffeceb;
+  --color-on-brand: #ffffff;
+
+  /* WhatsApp green — channel signal only */
+  --color-wa: #25d366;
+
+  --font-sans: var(--ff-sans), system-ui, -apple-system, sans-serif;
+  --font-display: var(--ff-display), var(--ff-sans), system-ui, sans-serif;
+
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.prose-pretty {
+  text-wrap: pretty;
+}
+
+/* ── Motion ─────────────────────────────────────────── */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes blink {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.rise {
+  opacity: 0;
+  animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.floaty {
+  animation: floaty 7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.bubble-in {
+  opacity: 0;
+  animation: pop 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .floaty,
+  .bubble-in {
+    animation: none;
+    opacity: 1;
+  }
+}

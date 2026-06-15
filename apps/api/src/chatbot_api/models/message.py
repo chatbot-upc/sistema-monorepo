@@ -41,6 +41,20 @@ class Message(IdPk, Base):
         unique=True,
         nullable=True,
     )
+    # Cita/reply: FK canónica al mensaje citado (puente con el wamid de Meta vía
+    # meta_message_id). ON DELETE SET NULL → si borran el original, no rompe.
+    in_reply_to_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Snapshot congelado del mensaje citado {id, role, content, created_at} para
+    # pintar el preview en el CRM sin queries extra. Inmutable por diseño.
+    quoted: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Acuse de entrega de mensajes SALIENTES (sent/delivered/read/failed) según
+    # los webhooks `statuses` de Meta. Null en los entrantes del estudiante.
+    delivery_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     intent_used_fallback: Mapped[bool | None] = mapped_column(
         nullable=True,
     )

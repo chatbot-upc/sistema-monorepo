@@ -18,7 +18,7 @@ def _stub_outbound(monkeypatch: pytest.MonkeyPatch) -> None:
     """No reuses Meta Cloud API ni Redis en tests unitarios."""
     from chatbot_api.services import whatsapp_service
 
-    async def _fake_send(*, to: str, body: str) -> str:
+    async def _fake_send(*, to: str, body: str, context: dict | None = None) -> str:
         return f"wamid.test.{to[-4:]}"
 
     monkeypatch.setattr(whatsapp_service, "send_message", _fake_send)

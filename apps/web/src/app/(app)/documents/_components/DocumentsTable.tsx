@@ -14,6 +14,7 @@ import { Pill } from "@/components/ui/Pill";
 import { IconButton } from "@/components/ui/IconButton";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/ToastProvider";
+import { parseApiDate } from "@/lib/dates";
 import type { DocumentRead, DocumentStatus } from "@/lib/api/documents";
 
 const STATUS_LABEL: Record<DocumentStatus, string> = {
@@ -63,7 +64,7 @@ export function DocumentsTable({ rows, onDelete }: DocumentsTableProps) {
 
 function formatIndexedAt(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso);
+  const d = parseApiDate(iso);
   return d.toLocaleDateString("es-PE", {
     year: "numeric",
     month: "short",
@@ -86,7 +87,24 @@ function DocumentRow({
           <FileText size={16} strokeWidth={2} />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold truncate">{doc.title}</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-sm font-semibold truncate">{doc.title}</div>
+            {doc.program ? (
+              <span
+                className="shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-primary-soft/60 text-primary"
+                title={`Solo visible para alumnos de: ${doc.program}`}
+              >
+                {doc.program}
+              </span>
+            ) : (
+              <span
+                className="shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-surface-2 text-muted"
+                title="Visible para todas las carreras"
+              >
+                general
+              </span>
+            )}
+          </div>
           {doc.status === "error" && doc.error_message ? (
             <div
               className="flex items-center gap-1 text-[11px] text-danger truncate"

@@ -10,6 +10,7 @@ from .endpoints import (
     notifications,
     prompts,
     reports,
+    tags,
 )
 
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -22,3 +23,4 @@ api_v1_router.include_router(monitoring.router)
 api_v1_router.include_router(notifications.router)
 api_v1_router.include_router(prompts.router)
 api_v1_router.include_router(reports.router)
+api_v1_router.include_router(tags.router)

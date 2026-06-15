@@ -19,6 +19,19 @@ class MessageRole(enum.StrEnum):
     admin = "admin"
 
 
+class MessageDeliveryStatus(enum.StrEnum):
+    """Estado de entrega de un mensaje SALIENTE (acuses de Meta).
+
+    Progresa sent → delivered → read. `failed` es terminal. Los mensajes
+    entrantes (del estudiante) no llevan este estado (queda null).
+    """
+
+    sent = "sent"
+    delivered = "delivered"
+    read = "read"
+    failed = "failed"
+
+
 class DocumentSourceType(enum.StrEnum):
     upload = "upload"
     scraped = "scraped"

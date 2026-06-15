@@ -1,6 +1,7 @@
 """Read endpoints with real DB queries + pagination + filters."""
 
 from datetime import datetime, timedelta
+from math import ceil
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,13 @@ DEV_USER_HEADER = {"X-Dev-User": "dev@upc.edu.pe"}
 async def test_list_conversations_paginated(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    # Baseline: la tabla puede traer filas commiteadas por otros tests (los
+    # workers commitean por su propio engine, fuera de la transacción del test),
+    # así que medimos el delta en vez de un total absoluto.
+    baseline = (
+        await client.get("/api/v1/conversations?page=1&size=2", headers=DEV_USER_HEADER)
+    ).json()["total"]
+
     student = await factories.make_student(db_session, phone="+51900100001")
     for _ in range(5):
         await factories.make_conversation(db_session, student_phone=student.phone_e164)
@@ -25,8 +33,8 @@ async def test_list_conversations_paginated(
     assert response.status_code == 200
     body = response.json()
     assert len(body["items"]) == 2
-    assert body["total"] == 5
-    assert body["pages"] == 3
+    assert body["total"] == baseline + 5
+    assert body["pages"] == ceil(body["total"] / 2)
 
 
 async def test_list_conversations_filter_status(

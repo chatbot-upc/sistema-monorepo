@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Field";
@@ -26,14 +26,21 @@ export function EditContactDrawer({
   const [cycle, setCycle] = useState(conversation.cycle ?? "");
   const [email, setEmail] = useState(conversation.email ?? "");
 
-  useEffect(() => {
-    if (!open) return;
-    setName(conversation.name);
-    setStudentId(conversation.studentId ?? "");
-    setCareer(conversation.career ?? "");
-    setCycle(conversation.cycle ?? "");
-    setEmail(conversation.email ?? "");
-  }, [open, conversation]);
+  // Reset del formulario al abrir o al cambiar de conversacion. Patron oficial
+  // de React (ajustar estado en render con rastreador de valor previo), en vez
+  // de useEffect. Vercel: rerender-derived-state-no-effect.
+  const resetKey = `${conversation.id}:${open}`;
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (prevResetKey !== resetKey) {
+    setPrevResetKey(resetKey);
+    if (open) {
+      setName(conversation.name);
+      setStudentId(conversation.studentId ?? "");
+      setCareer(conversation.career ?? "");
+      setCycle(conversation.cycle ?? "");
+      setEmail(conversation.email ?? "");
+    }
+  }
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>

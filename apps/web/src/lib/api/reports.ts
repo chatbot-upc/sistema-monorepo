@@ -30,8 +30,28 @@ export interface IntentSlice {
   percentage: number;
 }
 
+export interface ReportSummary {
+  total: number;
+  total_change_pct: number | null;
+  resolved_by_bot: number;
+  resolved_pct_of_total: number;
+  escalated: number;
+  escalated_pct_of_total: number;
+  fallback_rate: number;
+  fallback_change_pp: number | null;
+}
+
 export async function fetchDashboard(): Promise<DashboardStats> {
   return apiFetch<DashboardStats>("/api/v1/reports/dashboard");
+}
+
+export async function fetchReportSummary(
+  fromDate: string,
+  toDate: string,
+): Promise<ReportSummary> {
+  return apiFetch<ReportSummary>("/api/v1/reports/summary", {
+    searchParams: { from_date: fromDate, to_date: toDate },
+  });
 }
 
 export async function fetchConversationsByDay(

@@ -7,7 +7,7 @@ SQL trips are minimized: each metric block is one query.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.core.celery_app import celery_app
 from chatbot_api.core.settings import get_settings
+from chatbot_api.core.timezone import to_local, today_local_start
 from chatbot_api.models import Conversation, Message
 from chatbot_api.models.enums import ConversationStatus, MessageRole
 from chatbot_api.schemas.monitoring import (
@@ -31,10 +32,13 @@ log = structlog.get_logger()
 
 
 async def get_health(db: AsyncSession) -> MonitoringHealth:
+    # Ventanas móviles (última hora / 24h): comparación de instante; usa el
+    # mismo reloj que el resto del código (datetime.now). "Hoy" en cambio es un
+    # límite de calendario → se calcula en hora de Lima (today_local_start()).
     now = datetime.now()
     one_hour_ago = now - timedelta(hours=1)
     one_day_ago = now - timedelta(hours=24)
-    today_start = datetime.combine(now.date(), time.min)
+    today_start = today_local_start()
 
     messages = await _messages_metrics(db, one_hour_ago, one_day_ago)
     intent = await _intent_metrics(db, one_day_ago)
@@ -122,7 +126,7 @@ async def _tokens_metrics(
             select(
                 func.coalesce(func.sum(Message.input_tokens), 0),
                 func.coalesce(func.sum(Message.output_tokens), 0),
-            ).where(Message.created_at >= today_start)
+            ).where(to_local(Message.created_at) >= today_start)
         )
     ).one()
     return TokensMetrics(input_today=int(row[0]), output_today=int(row[1]))
@@ -149,7 +153,7 @@ async def _conversations_metrics(
         await db.execute(
             select(func.count(Conversation.id)).where(
                 Conversation.status == ConversationStatus.cerrada,
-                Conversation.closed_at >= today_start,
+                to_local(Conversation.closed_at) >= today_start,
             )
         )
     ).scalar_one()

@@ -20,6 +20,18 @@ async def dashboard(
     return await report_service.get_dashboard_stats(db)
 
 
+@router.get("/summary")
+async def summary(
+    from_date: date = Query(..., alias="from_date"),
+    to_date: date = Query(..., alias="to_date"),
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    return await report_service.get_report_summary(
+        db, from_date=from_date, to_date=to_date
+    )
+
+
 @router.get("/conversations")
 async def conversations_by_day(
     from_date: date = Query(..., alias="from_date"),

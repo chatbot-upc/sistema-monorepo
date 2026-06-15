@@ -11,6 +11,7 @@ import hmac
 
 from chatbot_api.schemas.whatsapp import (
     ParsedInboundMessage,
+    ParsedStatus,
     WhatsAppWebhookPayload,
 )
 
@@ -54,7 +55,24 @@ def extract_messages(payload: WhatsAppWebhookPayload) -> list[ParsedInboundMessa
                         display_name=display_name,
                         text=msg.text.body,
                         timestamp=msg.timestamp,
+                        context_wamid=msg.context.id if msg.context else None,
                     )
+                )
+    return parsed
+
+
+def extract_statuses(payload: WhatsAppWebhookPayload) -> list[ParsedStatus]:
+    """Recolecta los acuses de entrega (value.statuses[]) de mensajes salientes.
+
+    Cada uno referencia por wamid (= meta_message_id de nuestro mensaje) y trae
+    el nuevo estado (sent/delivered/read/failed).
+    """
+    parsed: list[ParsedStatus] = []
+    for entry in payload.entry:
+        for change in entry.changes:
+            for st in change.value.statuses:
+                parsed.append(
+                    ParsedStatus(meta_message_id=st.id, status=st.status)
                 )
     return parsed
 

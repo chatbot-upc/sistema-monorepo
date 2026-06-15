@@ -32,7 +32,6 @@ const NAV: NavItem[] = [
     href: "/conversations",
     label: "Conversaciones",
     icon: MessageSquare,
-    badge: 3,
   },
   { href: "/documents", label: "Documentos", icon: FileText },
   { href: "/intents", label: "Intenciones", icon: Tag },
@@ -41,7 +40,11 @@ const NAV: NavItem[] = [
   { href: "/monitoring", label: "Monitoreo", icon: Activity },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  conversationsCount?: number;
+}
+
+export function Sidebar({ conversationsCount }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
@@ -63,7 +66,9 @@ export function Sidebar() {
       {NAV.map((item) => {
         const Icon = item.icon;
         const href = item.href.split("?")[0];
-        const isActive = pathname === href;
+        const isActive = pathname === href || pathname.startsWith(`${href}/`);
+        const badge =
+          item.href === "/conversations" ? conversationsCount : item.badge;
         return (
           <Link
             key={item.label}
@@ -77,9 +82,9 @@ export function Sidebar() {
           >
             <Icon size={18} strokeWidth={1.75} className="shrink-0" />
             {item.label}
-            {item.badge && (
+            {badge != null && badge > 0 && (
               <span className="ml-auto bg-primary text-white font-mono text-[10px] px-2 py-0.5 rounded-full font-medium">
-                {item.badge}
+                {badge}
               </span>
             )}
           </Link>

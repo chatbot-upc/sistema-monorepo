@@ -84,16 +84,25 @@ interface TriggerProps {
 
 function DropdownTrigger({ children }: TriggerProps) {
   const { open, setOpen, triggerRef, contentId } = useDropdownCtx();
+  // Ref callback estable (no se recrea en cada render).
+  const setTriggerRef = useCallback(
+    (node: HTMLElement | null) => {
+      triggerRef.current = node;
+    },
+    [triggerRef],
+  );
   const child = Children.only(children);
   if (!isValidElement(child)) return null;
 
   const childProps = child.props ?? {};
   const childOnClick = childProps.onClick;
 
+  // Forwarding del ref del trigger via cloneElement: patron legitimo. La regla
+  // react-hooks/refs lo marca como posible lectura en render, pero aqui el ref
+  // callback solo se invoca en commit. Suprimido a proposito.
+  // eslint-disable-next-line react-hooks/refs
   return cloneElement(child, {
-    ref: (node: HTMLElement | null) => {
-      triggerRef.current = node;
-    },
+    ref: setTriggerRef,
     onClick: (e: React.MouseEvent) => {
       childOnClick?.(e);
       setOpen(!open);
@@ -123,6 +132,9 @@ function DropdownContent({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Patron de montaje-para-animacion (mount -> animar -> desmontar tras cierre).
+    // Requiere el effect por el ciclo SSR/portal; Vercel sugiere <Activity> a futuro.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) setMounted(true);
     else {
       const t = setTimeout(() => setMounted(false), 140);

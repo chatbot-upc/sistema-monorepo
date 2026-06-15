@@ -6,7 +6,8 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chatbot_api.models import Conversation, Message, Student
+from chatbot_api.core.timezone import to_local
+from chatbot_api.models import Conversation, Message, Student, StudentProfile
 from chatbot_api.models.enums import ConversationStatus
 
 from .base import BaseRepository
@@ -39,9 +40,13 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         if status is not None:
             query = query.where(Conversation.status == status)
         if from_date is not None:
-            query = query.where(Conversation.opened_at >= datetime.combine(from_date, time.min))
+            query = query.where(
+                to_local(Conversation.opened_at) >= datetime.combine(from_date, time.min)
+            )
         if to_date is not None:
-            query = query.where(Conversation.opened_at <= datetime.combine(to_date, time.max))
+            query = query.where(
+                to_local(Conversation.opened_at) <= datetime.combine(to_date, time.max)
+            )
         if phone:
             query = query.join(Student, Conversation.student_phone == Student.phone_e164)
             query = query.where(Student.display_name.op("%")(phone))
@@ -57,8 +62,8 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         phone: str | None = None,
         skip: int = 0,
         limit: int = 20,
-    ) -> list[tuple[Conversation, int, str | None]]:
-        """Single query: (Conversation, message_count, last_message_preview)."""
+    ) -> list[tuple[Conversation, int, str | None, str | None]]:
+        """Single query: (Conversation, message_count, last_message_preview, profile_name)."""
         msg_count_subq = (
             select(func.count(Message.id))
             .where(Message.conversation_id == Conversation.id)
@@ -73,11 +78,18 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             .correlate(Conversation)
             .scalar_subquery()
         )
+        profile_name_subq = (
+            select(StudentProfile.full_name)
+            .where(StudentProfile.phone_e164 == Conversation.student_phone)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
 
         query = select(
             Conversation,
             msg_count_subq.label("message_count"),
             last_msg_subq.label("last_message_content"),
+            profile_name_subq.label("profile_name"),
         ).options(selectinload(Conversation.student))
         query = self._apply_filters(
             query, status=status, from_date=from_date, to_date=to_date, phone=phone
@@ -86,7 +98,12 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         result = await db.execute(query)
         rows = result.unique().all()
         return [
-            (row[0], int(row.message_count), _truncate(row.last_message_content))
+            (
+                row[0],
+                int(row.message_count),
+                _truncate(row.last_message_content),
+                row.profile_name,
+            )
             for row in rows
         ]
 
@@ -105,6 +122,23 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         )
         count_query = select(func.count()).select_from(query.subquery())
         result = await db.execute(count_query)
+        return int(result.scalar_one())
+
+    async def count_by_phone(self, db: AsyncSession, phone: str) -> int:
+        result = await db.execute(
+            select(func.count(Conversation.id)).where(
+                Conversation.student_phone == phone
+            )
+        )
+        return int(result.scalar_one())
+
+    async def count_messages_by_phone(self, db: AsyncSession, phone: str) -> int:
+        result = await db.execute(
+            select(func.count(Message.id))
+            .select_from(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(Conversation.student_phone == phone)
+        )
         return int(result.scalar_one())
 
     async def get_with_messages(

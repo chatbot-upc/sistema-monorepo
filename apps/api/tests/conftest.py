@@ -22,6 +22,10 @@ def _disable_history_cache_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     Los tests específicos del cache (test_sw26_*) lo re-activan en su fixture.
     """
     monkeypatch.setenv("HISTORY_CACHE_ENABLED", "false")
+    # Debounce off por defecto: la ruta inline reproduce el comportamiento
+    # 1-mensaje→1-respuesta que asumen los tests existentes. Los tests del
+    # debounce ejercen _run_reply/_drain directamente.
+    monkeypatch.setenv("REPLY_DEBOUNCE_ENABLED", "false")
     from chatbot_api.core.settings import get_settings
 
     get_settings.cache_clear()

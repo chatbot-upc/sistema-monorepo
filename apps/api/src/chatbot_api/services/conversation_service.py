@@ -11,14 +11,17 @@ from chatbot_api.core.events import message_to_event_payload, publish_event
 from chatbot_api.models import Conversation
 from chatbot_api.models.enums import ConversationStatus
 from chatbot_api.repositories.conversation import conversation_repository
-from chatbot_api.repositories.message import message_repository
+from chatbot_api.repositories.message import build_quoted_snapshot, message_repository
+from chatbot_api.repositories.student_profile import student_profile_repository
 from chatbot_api.schemas.conversation import (
     ConversationDetail,
+    ConversationHistory,
     ConversationListItem,
     SendMessageResponse,
 )
 from chatbot_api.schemas.message import MessageRead
 from chatbot_api.schemas.pagination import Page, PageParams
+from chatbot_api.schemas.student_profile import StudentProfileRead
 from chatbot_api.services import conversation_history_service, whatsapp_service
 
 log = structlog.get_logger()
@@ -50,14 +53,16 @@ async def list_paginated(
         ConversationListItem(
             id=conv.id,
             student_phone=conv.student_phone,
-            student_display_name=conv.student.display_name if conv.student else None,
+            display_name=profile_name
+            or (conv.student.display_name if conv.student else None),
             status=conv.status,
             opened_at=conv.opened_at,
             closed_at=conv.closed_at,
             message_count=msg_count,
             last_message_preview=preview,
+            starred=conv.starred,
         )
-        for conv, msg_count, preview in rows
+        for conv, msg_count, preview, profile_name in rows
     ]
 
     return Page(
@@ -73,7 +78,46 @@ async def get_detail(db: AsyncSession, conversation_id: int) -> ConversationDeta
     conv = await conversation_repository.get_with_messages(db, conversation_id)
     if conv is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found")
-    return ConversationDetail.model_validate(conv)
+    detail = ConversationDetail.model_validate(conv)
+    detail.display_name = conv.student.display_name if conv.student else None
+    detail.email = conv.student.email if conv.student else None
+    profile = await student_profile_repository.get_by_phone(db, conv.student_phone)
+    if profile is not None:
+        detail.student_profile = StudentProfileRead.model_validate(profile)
+    return detail
+
+
+async def set_starred(
+    db: AsyncSession, *, conversation_id: int, starred: bool
+) -> ConversationDetail:
+    conv = await _get_or_404(db, conversation_id)
+    conv.starred = starred
+    await db.commit()
+    return await get_detail(db, conversation_id)
+
+
+async def update_contact(
+    db: AsyncSession, *, conversation_id: int, email: str | None
+) -> ConversationDetail:
+    conv = await _get_or_404(db, conversation_id)
+    normalized = email.strip() if email else None
+    conv.student.email = normalized or None
+    await db.commit()
+    return await get_detail(db, conversation_id)
+
+
+async def get_history(
+    db: AsyncSession, conversation_id: int
+) -> ConversationHistory:
+    conv = await _get_or_404(db, conversation_id)
+    phone = conv.student_phone
+    return ConversationHistory(
+        total_conversations=await conversation_repository.count_by_phone(db, phone),
+        total_messages=await conversation_repository.count_messages_by_phone(
+            db, phone
+        ),
+        first_contact=conv.student.first_seen_at if conv.student else None,
+    )
 
 
 async def list_messages_paginated(
@@ -120,12 +164,17 @@ async def send_admin_message(
     conversation_id: int,
     body: str,
     admin_id: int,
+    in_reply_to_id: int | None = None,
 ) -> SendMessageResponse:
     """Admin → student via WhatsApp. SW-38.
 
     Auto-takeover: if conv is `abierta`, switch to `takeover` so the bot stops
     replying. The worker already short-circuits on `status != abierta`, so the
     flip is enough — no extra coordination needed.
+
+    `in_reply_to_id`: cita un mensaje previo de la misma conversación. Se traduce
+    su wamid a `context.message_id` para que WhatsApp pinte la cita nativa, y se
+    congela el snapshot en el mensaje saliente.
     """
     conv = await _get_or_404(db, conversation_id)
     if conv.status == ConversationStatus.cerrada:
@@ -133,13 +182,29 @@ async def send_admin_message(
             status.HTTP_409_CONFLICT, "no se puede responder a una conversación cerrada"
         )
 
-    meta_id = await whatsapp_service.send_message(to=conv.student_phone, body=body)
+    context: dict[str, str] | None = None
+    quoted_snap: dict[str, object] | None = None
+    if in_reply_to_id is not None:
+        original = await message_repository.get(db, in_reply_to_id)
+        if original is None or original.conversation_id != conv.id:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "mensaje citado inválido"
+            )
+        quoted_snap = build_quoted_snapshot(original)
+        if original.meta_message_id:
+            context = {"message_id": original.meta_message_id}
+
+    meta_id = await whatsapp_service.send_message(
+        to=conv.student_phone, body=body, context=context
+    )
     msg = await message_repository.create_admin_message(
         db,
         conversation_id=conv.id,
         content=body,
         admin_id=admin_id,
         meta_message_id=meta_id,
+        in_reply_to_id=in_reply_to_id,
+        quoted=quoted_snap,
     )
 
     auto_takeover = conv.status == ConversationStatus.abierta

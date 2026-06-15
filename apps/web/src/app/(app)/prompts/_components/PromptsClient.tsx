@@ -8,6 +8,7 @@ import { Pill } from "@/components/ui/Pill";
 import { IconButton } from "@/components/ui/IconButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
+import { parseApiDate } from "@/lib/dates";
 import type { PromptVersion } from "@/lib/api/prompts";
 import { PromptEditorModal } from "./PromptEditorModal";
 import {
@@ -20,7 +21,7 @@ interface PromptsClientProps {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("es-PE", {
+  return parseApiDate(iso).toLocaleString("es-PE", {
     dateStyle: "medium",
     timeStyle: "short",
   });

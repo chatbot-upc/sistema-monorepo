@@ -7,7 +7,12 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useConversationStream } from "@/lib/use-conversation-stream";
-import type { DocumentRead, DocumentStatus, DocumentSummary } from "@/lib/api/documents";
+import type {
+  DocumentRead,
+  DocumentStatus,
+  DocumentSummary,
+  ProgramOption,
+} from "@/lib/api/documents";
 import { deleteDocumentAction } from "../_actions/documents";
 import { requestWsTicket } from "../../conversations/_actions/ws-ticket";
 import { DocumentsStats } from "./DocumentsStats";
@@ -34,6 +39,7 @@ interface DocumentsViewProps {
   totalPages: number;
   total: number;
   summary: DocumentSummary;
+  programOptions: ProgramOption[];
 }
 
 export function DocumentsView({
@@ -42,6 +48,7 @@ export function DocumentsView({
   totalPages,
   total,
   summary,
+  programOptions,
 }: DocumentsViewProps) {
   const { toast } = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -158,7 +165,11 @@ export function DocumentsView({
         itemLabelPlural="documentos"
       />
 
-      <UploadDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+      <UploadDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        programOptions={programOptions}
+      />
 
       <ConfirmDialog
         open={!!confirmDelete}
