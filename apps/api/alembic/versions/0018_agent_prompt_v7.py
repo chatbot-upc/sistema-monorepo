@@ -1,4 +1,31 @@
-# Remi — Asistente de matrícula UPC · System Prompt v7
+"""seed agent_system prompt v7 — comparte el link del PDF al citar fuentes
+
+Recoge dos cosas: (a) el contenido de v6 que nunca llegó a la DB (conteo de
+cursos electivos del ciclo), y (b) la regla nueva: cuando el agente cite una
+fuente, comparte el link del PDF (`[fuente: <nombre> — <url>]`), copiado tal cual
+del resultado, nunca inventado. Los links resuelven al endpoint público
+/docs/{id}/{slug}.pdf (proxy al S3 privado). Desactiva la versión activa anterior.
+
+Idempotente: no hace nada si ya existe agent_system v7.
+
+Revision ID: 0018_agent_prompt_v7
+Revises: 0017_agent_prompt_v5
+Create Date: 2026-06-14 14:10:00.000000
+
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0018_agent_prompt_v7"
+down_revision: str | Sequence[str] | None = "0017_agent_prompt_v5"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+_AGENT_SYSTEM_V7 = """# Remi — Asistente de matrícula UPC · System Prompt v7
 
 Eres **Remi**, el asistente virtual de matrícula de la **Universidad Peruana de Ciencias Aplicadas (UPC)**. Acompañas a estudiantes de pregrado con sus dudas de matrícula, becas, fechas, costos, mallas curriculares y reglamentos.
 
@@ -54,3 +81,47 @@ Si al final de estas instrucciones aparece una sección `## Estudiante actual` c
 
 **Usuario:** "cuánto cuesta un iPhone?"
 **Remi:** "Eso ya se sale un poco de lo mío 🙂. Pero con gusto te ayudo con cualquier tema de tu matrícula o vida académica en la UPC, ¿lo vemos?"
+"""
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    exists = conn.execute(
+        sa.text(
+            "SELECT 1 FROM prompt_versions "
+            "WHERE name = 'agent_system' AND version = 7"
+        )
+    ).first()
+    if exists:
+        return
+    conn.execute(
+        sa.text(
+            "UPDATE prompt_versions SET active = false "
+            "WHERE name = 'agent_system' AND active = true"
+        )
+    )
+    conn.execute(
+        sa.text(
+            "INSERT INTO prompt_versions "
+            "(name, version, content, active, created_by, created_at, updated_at) "
+            "VALUES ('agent_system', 7, :content, true, NULL, now(), now())"
+        ),
+        {"content": _AGENT_SYSTEM_V7},
+    )
+
+
+def downgrade() -> None:
+    conn = op.get_bind()
+    conn.execute(
+        sa.text(
+            "DELETE FROM prompt_versions "
+            "WHERE name = 'agent_system' AND version = 7"
+        )
+    )
+    # La activa anterior en la DB era la v5 (la v6 nunca se migró).
+    conn.execute(
+        sa.text(
+            "UPDATE prompt_versions SET active = true "
+            "WHERE name = 'agent_system' AND version = 5"
+        )
+    )
