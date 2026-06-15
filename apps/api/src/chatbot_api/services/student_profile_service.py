@@ -12,6 +12,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chatbot_api.core.programs import canonical_program
 from chatbot_api.models import StudentProfile
 from chatbot_api.repositories.student_profile import student_profile_repository
 
@@ -106,3 +107,18 @@ async def get_profile_context(
     if profile is None:
         return None
     return _build_context(profile)
+
+
+async def get_profile_scope(
+    db: AsyncSession, phone_e164: str
+) -> tuple[str | None, str | None]:
+    """(context, program) en una sola consulta — lo que el worker necesita.
+
+    - context: bloque de texto para el system prompt (None si no hay perfil).
+    - program: slug canónico de la carrera para scopear el RAG (SW-46); None si
+      no hay perfil o la carrera no normaliza → fail-open (búsqueda global).
+    """
+    profile = await student_profile_repository.get_by_phone(db, phone_e164)
+    if profile is None:
+        return None, None
+    return _build_context(profile), canonical_program(profile.career)

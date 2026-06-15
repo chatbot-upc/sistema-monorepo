@@ -16,6 +16,13 @@ class Document(IdPk, Timestamped, Base):
     __tablename__ = "documents"
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Carrera/programa al que aplica el doc (slug canónico, ver core.programs).
+    # NULL = doc general (fechas, becas, reglamentos) → visible a todas las
+    # carreras. Si tiene valor, el retrieval lo restringe a alumnos de esa
+    # carrera. Lo setea el upload (panel) o el backfill de mallas.
+    program: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True
+    )
     source_type: Mapped[DocumentSourceType] = mapped_column(
         Enum(DocumentSourceType, name="document_source_type"),
         nullable=False,

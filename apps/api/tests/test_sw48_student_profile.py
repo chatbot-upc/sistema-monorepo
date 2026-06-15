@@ -72,6 +72,27 @@ async def test_english_avance_when_incomplete(db_session: AsyncSession) -> None:
     assert "3 niveles" in ctx
 
 
+async def test_get_profile_scope_returns_program(
+    db_session: AsyncSession,
+) -> None:
+    """SW-46: get_profile_scope deriva el slug de carrera para scopear el RAG."""
+    await _make_profile(db_session, career="Ing. de Sistemas de Información")
+    ctx, program = await student_profile_service.get_profile_scope(
+        db_session, _PHONE
+    )
+    assert ctx is not None
+    assert program == "sistemas-informacion"
+
+
+async def test_get_profile_scope_unknown_phone(db_session: AsyncSession) -> None:
+    """Sin perfil → (None, None) → fail-open (búsqueda global)."""
+    ctx, program = await student_profile_service.get_profile_scope(
+        db_session, "+51999999999"
+    )
+    assert ctx is None
+    assert program is None
+
+
 async def test_unknown_phone_returns_none(db_session: AsyncSession) -> None:
     ctx = await student_profile_service.get_profile_context(
         db_session, "+51999999999"
@@ -118,8 +139,10 @@ async def test_worker_injects_profile_context(
         history: list[dict[str, str]] | None = None,
         db: object | None = None,
         profile_context: str | None = None,
+        program: str | None = None,
     ) -> dict[str, Any]:
         captured["profile_context"] = profile_context
+        captured["program"] = program
         return {"text": "Hola Sebastián, ...", "tool_calls": []}
 
     stub_intent = AsyncMock(
@@ -159,3 +182,5 @@ async def test_worker_injects_profile_context(
 
     assert captured["profile_context"] is not None
     assert "Sebastián Rojas" in captured["profile_context"]
+    # SW-46: el worker deriva el slug de carrera y lo pasa para scopear el RAG.
+    assert captured["program"] == "sistemas-informacion"

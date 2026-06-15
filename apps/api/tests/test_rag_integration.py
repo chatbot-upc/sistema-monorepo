@@ -84,6 +84,30 @@ async def test_upload_document_endpoint_creates_pending(
     assert mock_celery_task[0] == body["id"]
 
 
+async def test_upload_document_with_program_tags_canonical(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    mock_celery_task: list[int],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SW-46: subir con program → se guarda el slug canónico en el doc."""
+    from chatbot_api.core import storage as storage_mod
+    from chatbot_api.core.storage import LocalFileStorage
+
+    monkeypatch.setattr(storage_mod, "_storage", LocalFileStorage(tmp_path))
+
+    pdf_bytes = SAMPLE_PDF.read_bytes()
+    response = await client.post(
+        "/api/v1/documents",
+        headers=DEV_USER_HEADER,
+        files={"file": ("malla_si.pdf", pdf_bytes, "application/pdf")},
+        data={"source_type": "upload", "program": "Ing. de Sistemas de Información"},
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["program"] == "sistemas-informacion"
+
+
 async def test_upload_document_dedupe_returns_409(
     client: AsyncClient,
     db_session: AsyncSession,
@@ -199,6 +223,66 @@ async def test_retriever_filters_by_indexed_status(
     chunk_texts = {c.chunk_text for c, _ in results}
     assert "visible" in chunk_texts
     assert "hidden" not in chunk_texts
+
+
+async def test_retriever_scopes_by_program(
+    db_session: AsyncSession, mock_embeddings: _MockEmbeddings
+) -> None:
+    """SW-46: retrieve(program=X) trae solo la malla X + docs generales (NULL)."""
+    from chatbot_api.rag.retriever import retrieve
+
+    malla_si = Document(
+        title="malla SI",
+        source_type="upload",
+        s3_key="si",
+        sha256="1" * 64,
+        status=DocumentStatus.indexed,
+        program="sistemas-informacion",
+    )
+    malla_cc = Document(
+        title="malla CC",
+        source_type="upload",
+        s3_key="cc",
+        sha256="2" * 64,
+        status=DocumentStatus.indexed,
+        program="ciencias-computacion",
+    )
+    general = Document(
+        title="calendario",
+        source_type="upload",
+        s3_key="cal",
+        sha256="3" * 64,
+        status=DocumentStatus.indexed,
+        program=None,
+    )
+    db_session.add_all([malla_si, malla_cc, general])
+    await db_session.flush()
+    for doc, text in [
+        (malla_si, "curso_si"),
+        (malla_cc, "curso_cc"),
+        (general, "fecha_general"),
+    ]:
+        db_session.add(
+            DocumentChunk(
+                document_id=doc.id,
+                chunk_text=text,
+                embedding=_fake_vector(),
+                chunk_index=0,
+            )
+        )
+    await db_session.flush()
+
+    results = await retrieve(
+        db_session, "any", k=10, program="sistemas-informacion"
+    )
+    texts = {c.chunk_text for c, _ in results}
+    assert "curso_si" in texts  # su malla
+    assert "fecha_general" in texts  # doc general (NULL) visible a todos
+    assert "curso_cc" not in texts  # otra carrera → excluida
+
+    # Fail-open: sin program trae todo (comportamiento histórico).
+    all_results = await retrieve(db_session, "any", k=10)
+    assert "curso_cc" in {c.chunk_text for c, _ in all_results}
 
 
 async def test_ingest_pipeline_e2e(

@@ -5,7 +5,11 @@ from chatbot_api.api.dependencies import get_current_admin
 from chatbot_api.core.db import get_session
 from chatbot_api.models import Admin
 from chatbot_api.models.enums import DocumentSourceType, DocumentStatus
-from chatbot_api.schemas.document import DocumentRead, DocumentSummary
+from chatbot_api.schemas.document import (
+    DocumentRead,
+    DocumentSummary,
+    ProgramOption,
+)
 from chatbot_api.schemas.pagination import Page, PageParams
 from chatbot_api.services import document_service
 
@@ -37,6 +41,15 @@ async def get_documents_summary(
     return await document_service.get_summary(db)
 
 
+@router.get("/programs", response_model=list[ProgramOption])
+async def list_program_options(
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> list[ProgramOption]:
+    """Opciones del selector "Programa/carrera" al subir un documento (SW-46)."""
+    return await document_service.list_program_options(db)
+
+
 @router.get("/{document_id}", response_model=DocumentRead)
 async def get_document(
     document_id: int,
@@ -54,6 +67,7 @@ async def get_document(
 async def upload(
     file: UploadFile = File(...),
     source_type: DocumentSourceType = Form(DocumentSourceType.upload),
+    program: str | None = Form(None),
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_session),
 ) -> DocumentRead:
@@ -64,6 +78,7 @@ async def upload(
         content=content,
         source_type=source_type,
         uploaded_by=admin.id,
+        program=program,
     )
 
 

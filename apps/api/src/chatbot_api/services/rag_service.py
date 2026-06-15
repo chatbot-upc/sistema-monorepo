@@ -14,11 +14,16 @@ from typing import Any
 import structlog
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
+from langgraph.errors import GraphRecursionError
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.core.settings import get_settings
-from chatbot_api.rag.tools import escalate_to_human, search_knowledge_base
+from chatbot_api.rag.tools import (
+    escalate_to_human,
+    make_search_knowledge_base,
+    reply_to_message,
+)
 from chatbot_api.repositories.prompt_version import prompt_version_repository
 
 log = structlog.get_logger()
@@ -96,8 +101,12 @@ async def _get_system_prompt(db: AsyncSession | None) -> str:
     return _active_prompt
 
 
-def _get_agent(system_prompt: str) -> Any:
-    """Builds a fresh agent per call (see module docstring)."""
+def _get_agent(system_prompt: str, program: str | None = None) -> Any:
+    """Builds a fresh agent per call (see module docstring).
+
+    `program`: scope de carrera del alumno → la tool de búsqueda solo trae la
+    malla de esa carrera + docs generales (fix SW-46). None = búsqueda global.
+    """
     settings = get_settings()
     chat = ChatOpenAI(
         model=settings.openai_model,
@@ -105,7 +114,11 @@ def _get_agent(system_prompt: str) -> Any:
     )
     return create_agent(
         model=chat,
-        tools=[escalate_to_human, search_knowledge_base],
+        tools=[
+            escalate_to_human,
+            reply_to_message,
+            make_search_knowledge_base(program),
+        ],
         system_prompt=system_prompt,
     )
 
@@ -117,6 +130,7 @@ async def answer(
     history: list[dict[str, str]] | None = None,
     db: AsyncSession | None = None,
     profile_context: str | None = None,
+    program: str | None = None,
 ) -> dict[str, Any]:
     """Invoca el agente con el mensaje del usuario + historial reciente.
 
@@ -138,13 +152,33 @@ async def answer(
     system_prompt = await _get_system_prompt(db)
     if profile_context:
         system_prompt = f"{system_prompt}\n\n{profile_context}"
-    result = await _get_agent(system_prompt).ainvoke(
-        {"messages": messages},
-        config={
-            "recursion_limit": 10,
-            "metadata": {"correlation_id": correlation_id},
-        },
-    )
+    try:
+        result = await _get_agent(system_prompt, program).ainvoke(
+            {"messages": messages},
+            config={
+                "recursion_limit": 12,
+                "metadata": {"correlation_id": correlation_id},
+            },
+        )
+    except GraphRecursionError:
+        # El agente se atascó en un bucle de búsquedas (p. ej. el dato no está en
+        # el KB). En vez de reventar la task y dejar al alumno sin respuesta,
+        # devolvemos un fallback de cortesía. Lo marcamos para escalar a humano.
+        log.warning("rag_recursion_limit_exhausted", correlation_id=correlation_id)
+        return {
+            "text": (
+                "Disculpa, no logré encontrar esa información en este momento. "
+                "Voy a derivarte con un asesor para que te ayude mejor. 🙏"
+            ),
+            "tool_calls": [
+                {
+                    "name": "escalate_to_human",
+                    "args": {"reason": "rag_recursion_limit"},
+                }
+            ],
+            "input_tokens": None,
+            "output_tokens": None,
+        }
 
     last = result["messages"][-1]
     tool_calls: list[dict[str, Any]] = []

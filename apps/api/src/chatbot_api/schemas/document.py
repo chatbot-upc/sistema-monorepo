@@ -10,6 +10,7 @@ class DocumentRead(BaseModel):
 
     id: int
     title: str
+    program: str | None = None
     source_type: DocumentSourceType
     source_url: str | None
     s3_key: str
@@ -31,3 +32,14 @@ class DocumentSummary(BaseModel):
     indexing: int
     pending: int
     error: int
+
+
+class ProgramOption(BaseModel):
+    """Opción del selector "Programa/carrera" al subir un documento (SW-46).
+
+    `value` es el slug canónico que se guarda en documents.program; `label` es
+    la carrera legible. Se derivan de las carreras reales de los estudiantes.
+    """
+
+    value: str
+    label: str

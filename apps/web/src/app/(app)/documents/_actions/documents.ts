@@ -49,6 +49,11 @@ export async function uploadDocumentAction(
   const upstream = new FormData();
   upstream.set("file", file);
   upstream.set("source_type", "upload");
+  // SW-46: carrera a la que aplica el doc (slug). Vacío = "General" → NULL.
+  const program = formData.get("program");
+  if (typeof program === "string" && program) {
+    upstream.set("program", program);
+  }
 
   try {
     const doc: DocumentRead = await uploadDocument(upstream);

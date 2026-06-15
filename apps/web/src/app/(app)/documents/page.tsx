@@ -1,4 +1,8 @@
-import { fetchDocuments, fetchDocumentsSummary } from "@/lib/api/documents";
+import {
+  fetchDocuments,
+  fetchDocumentsSummary,
+  fetchProgramOptions,
+} from "@/lib/api/documents";
 import { DocumentsView } from "./_components/DocumentsView";
 
 const PAGE_SIZE = 20;
@@ -14,10 +18,12 @@ export default async function DocumentsPage({
   const parsed = Number.parseInt(pageParam ?? "1", 10);
   const currentPage = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 
-  // Parallel fetch: list + summary are independent (skill: async-parallel)
-  const [page, summary] = await Promise.all([
+  // Parallel fetch: list + summary + program options son independientes
+  // (skill: async-parallel).
+  const [page, summary, programOptions] = await Promise.all([
     fetchDocuments({ page: currentPage, size: PAGE_SIZE }),
     fetchDocumentsSummary(),
+    fetchProgramOptions(),
   ]);
 
   return (
@@ -27,6 +33,7 @@ export default async function DocumentsPage({
       totalPages={page.pages}
       total={page.total}
       summary={summary}
+      programOptions={programOptions}
     />
   );
 }
