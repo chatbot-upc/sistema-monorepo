@@ -31,6 +31,13 @@ jobs:
     name: api · ruff + mypy + pytest
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # get_settings() se evalúa al IMPORTAR celery_app.py durante la colección de
+      # pytest, antes de que el fixture de testcontainers fije la URL real. Sin un
+      # .env en CI, el campo requerido `database_url` falla la colección. Este
+      # placeholder solo satisface el import; el fixture postgres_url lo
+      # sobreescribe con la BD real (+ get_settings.cache_clear()).
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
     defaults:
       run:
         working-directory: apps/api
