@@ -10,25 +10,41 @@ import {
 } from "@/components/ui/DateRangePicker";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatShort } from "@/lib/dates";
+import type { ReportsData } from "../_actions/reports";
+import { exportCsv, exportExcel, exportPdf } from "./export";
 
 interface ReportsToolbarProps {
   range: DateRange;
   onRangeChange: (r: DateRange) => void;
+  data: ReportsData | null;
+}
+
+function isoLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function ReportsToolbar({
   range,
   onRangeChange,
+  data,
 }: ReportsToolbarProps) {
   const { toast } = useToast();
+  const rangeLabel = `${formatShort(range.start)} → ${formatShort(range.end)}`;
+  const stem = `reporte-upcbot-${isoLocal(range.start)}_${isoLocal(range.end)}`;
 
-  const exportAs = (format: "pdf" | "excel" | "csv") => {
+  const onExport = (format: "pdf" | "excel" | "csv") => {
+    if (!data) {
+      toast.info("Aún cargando datos del reporte…");
+      return;
+    }
+    if (format === "csv") exportCsv(data, rangeLabel, `${stem}.csv`);
+    else if (format === "excel") exportExcel(data, rangeLabel, `${stem}.xls`);
+    else exportPdf(data, rangeLabel);
     toast.success(`Exportando ${format.toUpperCase()}`, {
-      description: `Reporte del ${formatShort(range.start)} al ${formatShort(range.end)} en cola.`,
-      action: {
-        label: "Ver descargas",
-        onClick: () => toast.info("Abriendo bandeja de descargas..."),
-      },
+      description: `Reporte del ${rangeLabel}.`,
     });
   };
 
@@ -38,7 +54,7 @@ export function ReportsToolbar({
       <div className="ml-auto">
         <Dropdown align="end">
           <Dropdown.Trigger>
-            <Button variant="dark" size="lg">
+            <Button variant="dark" size="lg" disabled={!data}>
               <Download size={16} strokeWidth={2.5} />
               Exportar
             </Button>
@@ -46,19 +62,19 @@ export function ReportsToolbar({
           <Dropdown.Content>
             <Dropdown.Item
               icon={<FileText size={14} strokeWidth={2} />}
-              onSelect={() => exportAs("pdf")}
+              onSelect={() => onExport("pdf")}
             >
               PDF · Reporte ejecutivo
             </Dropdown.Item>
             <Dropdown.Item
               icon={<FileSpreadsheet size={14} strokeWidth={2} />}
-              onSelect={() => exportAs("excel")}
+              onSelect={() => onExport("excel")}
             >
               Excel · Datos tabulares
             </Dropdown.Item>
             <Dropdown.Item
               icon={<FileCode size={14} strokeWidth={2} />}
-              onSelect={() => exportAs("csv")}
+              onSelect={() => onExport("csv")}
             >
               CSV · Crudo, máx detalle
             </Dropdown.Item>

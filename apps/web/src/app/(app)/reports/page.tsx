@@ -1,18 +1,51 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DateRange } from "@/components/ui/DateRangePicker";
 import { ReportsToolbar } from "./_components/ReportsToolbar";
 import { ReportsSummary } from "./_components/ReportsSummary";
 import { ReportsCharts } from "./_components/ReportsCharts";
+import { fetchReportsAction, type ReportsData } from "./_actions/reports";
 
-const DEFAULT_RANGE: DateRange = {
-  start: new Date(2026, 3, 21), // 21 abr 2026
-  end: new Date(2026, 4, 1), //   01 may 2026
-};
+function isoLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function lastDays(n: number): DateRange {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - (n - 1));
+  return { start, end };
+}
 
 export default function ReportsPage() {
-  const [range, setRange] = useState<DateRange>(DEFAULT_RANGE);
+  const [range, setRange] = useState<DateRange>(() => lastDays(7));
+  const [data, setData] = useState<ReportsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      const result = await fetchReportsAction(
+        isoLocal(range.start),
+        isoLocal(range.end),
+      );
+      if (!alive) return;
+      if (result.ok) setData(result.data);
+      else setError(result.error);
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [range]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -25,11 +58,22 @@ export default function ReportsPage() {
         </p>
       </header>
 
-      <ReportsToolbar range={range} onRangeChange={setRange} />
+      <ReportsToolbar range={range} onRangeChange={setRange} data={data} />
 
-      <ReportsSummary />
-
-      <ReportsCharts />
+      {error ? (
+        <div className="text-sm text-primary bg-primary-soft rounded-2xl px-5 py-4">
+          {error}
+        </div>
+      ) : (
+        <>
+          <ReportsSummary summary={data?.summary ?? null} loading={loading} />
+          <ReportsCharts
+            daily={data?.daily ?? []}
+            intents={data?.intents ?? []}
+            loading={loading}
+          />
+        </>
+      )}
     </div>
   );
 }
