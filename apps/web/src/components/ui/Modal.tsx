@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 import { IconButton } from "./IconButton";
 
 type Size = "sm" | "md" | "lg" | "xl";
@@ -89,11 +90,7 @@ function ModalRoot({
 
   useLayoutEffect(() => {
     if (!mounted) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    return lockBodyScroll();
   }, [mounted]);
 
   useEffect(() => {

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "pnpm run --parallel dev:web dev:api dev:worker",
+    "dev": "concurrently -n web,api,worker,flower -c blue,green,yellow,magenta \"pnpm dev:web\" \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:flower\"",
     "dev:web": "pnpm --filter web dev",
     "dev:api": "cd apps/api && uv run uvicorn chatbot_api.main:app --reload --port 8000",
     "dev:worker": "cd apps/api && uv run celery -A chatbot_api.core.celery_app worker --pool=solo --loglevel=info",
@@ -13,5 +13,8 @@
     "test:api": "cd apps/api && uv run pytest",
     "lint:api": "cd apps/api && uv run ruff check . && uv run mypy"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.32.1",
+  "devDependencies": {
+    "concurrently": "^10.0.0"
+  }
 }

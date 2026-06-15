@@ -39,6 +39,17 @@ export const MONTHS_FULL = [
 
 export const WEEKDAYS_ES = ["L", "M", "X", "J", "V", "S", "D"];
 
+/**
+ * Parsea un timestamp del API tratándolo como UTC cuando no trae zona horaria.
+ * El backend serializa datetimes "naive" (ej. `2026-06-14T00:11:00`, sin `Z`),
+ * y `new Date()` los interpretaría como hora local. Forzamos UTC para que
+ * `toLocale*` los convierta correctamente a la zona del navegador.
+ */
+export function parseApiDate(iso: string): Date {
+  const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso);
+  return new Date(hasTz ? iso : `${iso}Z`);
+}
+
 /** "21 abr 2026" */
 export function formatPill(d: Date): string {
   return `${String(d.getDate()).padStart(2, "0")} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
