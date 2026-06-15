@@ -50,8 +50,12 @@ class FrugalStack(Stack):
         # SSH no se abre: el acceso administrativo es por SSM Session Manager.
 
         # --- S3 para documentos (RAG) ---
+        # Nombre determinista (cuenta) → lo conoces ANTES del deploy, así puedes
+        # poner AWS_S3_BUCKET en el .env/SSM de una. Único globalmente (lleva el
+        # account id) y estable entre ráfagas de tear-down/re-deploy.
         docs_bucket = s3.Bucket(
             self, "DocsBucket",
+            bucket_name=f"chatbot-upc-docs-{self.account}",
             versioned=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
