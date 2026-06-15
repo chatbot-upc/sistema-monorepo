@@ -51,6 +51,56 @@ Perfil económico: añade `-c mode=frugal` a cualquier comando.
 > Desplegar en **ráfagas** y destruir al terminar. Ojo con el **NAT Gateway** (~$32/mes),
 > el costo fijo más alto aunque no haya tráfico.
 
+## Runbook: levantar la MV frugal de cero
+
+Orden importante: **las imágenes deben existir en ghcr.io ANTES del `cdk deploy`**
+(la EC2 hace `docker compose pull` al arrancar), y **el `.env` debe estar en SSM
+ANTES del deploy** (el user-data lo baja en el primer boot).
+
+**Fase 0 — Prerrequisitos (una vez)**
+1. Credenciales AWS locales (`aws sts get-caller-identity` responde).
+2. Cognito **ya existe** (frugal NO lo crea): ten tu User Pool + un usuario, y anota
+   `USER_POOL_ID` y `CLIENT_ID`.
+3. Bootstrap CDK: `cd infra/cdk && uv sync && uv run cdk bootstrap`.
+
+**Fase 1 — Construir imágenes**
+4. Merge `development` → `main` → `build-images.yml` publica
+   `ghcr.io/chatbot-upc/chatbot-{api,web}:latest`. **Espera a que termine en verde.**
+   (`deploy.yml` se dispara pero se omite: aún no hay EC2.)
+
+**Fase 2 — Config a SSM**
+5. Arma tu `.env.prod` (local, gitignoreado). Mínimo:
+   ```bash
+   AWS_S3_BUCKET=chatbot-upc-docs-<account_id>   # output DocsBucketName del FrugalStack
+   COGNITO_USER_POOL_ID=...  COGNITO_CLIENT_ID=...  COGNITO_REGION=us-east-1
+   ADMIN_EMAIL=tu-email@...  ADMIN_NAME=Tu Nombre
+   PUBLIC_BASE_URL=https://remiai.tech
+   DOMAIN=                                         # vacío al inicio (acceso por IP)
+   # + DATABASE_URL/REDIS_URL (contenedores), OPENAI_*, META_*, etc.
+   ```
+6. Súbelo a SSM:
+   ```bash
+   aws ssm put-parameter --name /chatbot-upc/frugal/env --type SecureString \
+     --value "$(cat .env.prod)" --region us-east-1 --overwrite
+   ```
+
+**Fase 3 — Levantar**
+7. `cd infra/cdk && uv run cdk deploy ChatbotUpc-Frugal`. Anota el output `PublicIp`.
+   ⚠️ Aquí empieza el gasto.
+
+**Fase 4 — Verificar**
+8. ~2-3 min (user-data instala Docker + `compose up`; el servicio `migrate` crea el
+   esquema y siembra tu admin desde `ADMIN_EMAIL`).
+9. `http://<PublicIp>/health` responde → entra al CRM y loguéate con Cognito.
+10. Re-ingesta los PDFs al bucket nuevo (está vacío): `scripts/bulk_ingest.py`.
+
+**Fase 5 — Dominio + HTTPS**
+11. Registro `A`: `remiai.tech` → `PublicIp`. Verifica con `dig +short remiai.tech`.
+12. Edita `.env.prod` → `DOMAIN=remiai.tech`, re-sube a SSM (`--overwrite`) y reinicia
+    compose (o dispara el CD). Caddy saca el certificado solo.
+
+> Cuando termines la ráfaga: `cdk destroy ChatbotUpc-Frugal` (NO `--all`).
+
 ## Variables de entorno (`.env`) — de dónde salen
 
 El `.env` de **producción no se commitea ni pasa por GitHub**. La **fuente de verdad
