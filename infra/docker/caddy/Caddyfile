@@ -4,12 +4,13 @@
 #
 # Rutas:
 #   /api/*  y  /health  -> FastAPI (incluye el webhook de WhatsApp en /api/v1/...)
+#   /docs/*             -> FastAPI (PDFs públicos: /docs/{id}/{slug}.pdf, proxy al S3)
 #   resto               -> Next.js (panel admin)
 
 {$DOMAIN::80} {
 	encode gzip zstd
 
-	@api path /api/* /health
+	@api path /api/* /health /docs/*
 	handle @api {
 		reverse_proxy api:8000
 	}

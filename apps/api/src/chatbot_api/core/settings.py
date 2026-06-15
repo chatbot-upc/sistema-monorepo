@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
+    # Base pública del sitio (dominio propio con HTTPS). Se usa para construir los
+    # links a los PDFs que el agente comparte en sus respuestas, p. ej.
+    # https://remiai.tech/docs/12/malla-si.pdf  →  endpoint proxy al S3 privado.
+    # Vacío = no se adjuntan links (fallback a citar solo el título). Sin "/" final.
+    public_base_url: str = ""
+
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
 

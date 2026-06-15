@@ -158,3 +158,16 @@ async def delete_document(db: AsyncSession, document_id: int) -> None:
     await get_storage().delete(doc.s3_key)
     await document_repository.delete(db, document_id)  # cascade delete chunks
     await db.commit()
+
+
+async def get_public_file(db: AsyncSession, document_id: int) -> tuple[bytes, str]:
+    """Devuelve (contenido, título) de un doc para el endpoint público /docs/{id}.
+
+    Solo sirve documentos ya `indexed` (no expone pendientes/errados). El bucket
+    sigue privado: esto es un proxy de lectura, no acceso directo al S3.
+    """
+    doc = await document_repository.get(db, document_id)
+    if doc is None or doc.status != DocumentStatus.indexed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+    content = await get_storage().get(doc.s3_key)
+    return content, doc.title

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .api.public import router as public_router
 from .api.v1.router import api_v1_router
 from .api.webhooks import router as webhooks_router
 from .api.ws.conversations import router as ws_router
@@ -33,6 +34,7 @@ app.add_middleware(
 app.add_middleware(CorrelationMiddleware)
 
 app.include_router(webhooks_router)
+app.include_router(public_router)
 app.include_router(api_v1_router)
 app.include_router(ws_router)
 

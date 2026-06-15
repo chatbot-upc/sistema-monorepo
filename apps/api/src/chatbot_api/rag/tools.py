@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from chatbot_api.core.settings import get_settings
+from chatbot_api.core.text import public_doc_url
 
 from .retriever import retrieve
 
@@ -64,10 +65,17 @@ def make_search_knowledge_base(program: str | None = None) -> Any:
         )
         if not kept:
             return "no_results"
+
         # Citamos por NOMBRE del documento (no doc_id): es lo que el agente
         # mostrará al alumno → "(Fuente: <nombre>)" en vez de un id técnico.
+        # Si hay dominio público configurado, adjuntamos el link permanente al
+        # PDF (proxy al S3 privado) para que el agente lo comparta en su respuesta.
+        def _fuente(doc: Any) -> str:
+            url = public_doc_url(doc.id, doc.title)
+            return f"{doc.title} — {url}" if url else doc.title
+
         return "\n\n---\n\n".join(
-            f"[score={1 - d:.3f}] [fuente: {c.document.title}] {c.chunk_text}"
+            f"[score={1 - d:.3f}] [fuente: {_fuente(c.document)}] {c.chunk_text}"
             for c, d in kept
         )
 
