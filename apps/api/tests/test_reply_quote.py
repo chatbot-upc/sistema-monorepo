@@ -273,10 +273,26 @@ async def test_worker_inbound_reply_persists_and_injects_context(
 
     fake_answer = AsyncMock(return_value={"text": "Te explico", "tool_calls": []})
     fake_send = AsyncMock(return_value="wamid.bot.reply")
+    # El clasificador de intención se prueba aparte (SW-14); aquí lo mantenemos
+    # fuera del path del worker para no depender de SBERT/LLM (OpenAI) en CI.
+    fake_classify = AsyncMock(
+        return_value={
+            "intent_id": None,
+            "intent_name": None,
+            "confidence": 0.0,
+            "used_fallback": False,
+            "sbert_intent_name": None,
+            "sbert_confidence": 0.0,
+        }
+    )
     with (
         patch("chatbot_api.workers.conversation.rag_service.answer", fake_answer),
         patch(
             "chatbot_api.workers.conversation.whatsapp_service.send_message", fake_send
+        ),
+        patch(
+            "chatbot_api.workers.conversation.intent_classifier_service.classify",
+            fake_classify,
         ),
     ):
         await _process_async(parsed, "corr-reply")
