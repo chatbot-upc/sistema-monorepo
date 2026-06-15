@@ -3,14 +3,15 @@
 # - Si DOMAIN esta vacio -> escucha en :80 (acceso por la IP del EIP, sin TLS).
 #
 # Rutas:
-#   /api/*  y  /health  -> FastAPI (incluye el webhook de WhatsApp en /api/v1/...)
-#   /docs/*             -> FastAPI (PDFs públicos: /docs/{id}/{slug}.pdf, proxy al S3)
-#   resto               -> Next.js (panel admin)
+#   /api/v1/*  /api/webhooks/*  /health  /docs/*  -> FastAPI
+#   resto (incl. /api/auth/* de Auth.js)          -> Next.js (panel admin)
+# OJO: NO enrutar todo /api/* a FastAPI — Next.js (Auth.js) usa /api/auth/* para
+# el login; si se lo mandas a FastAPI, devuelve 404 {"detail":"Not Found"}.
 
 {$DOMAIN::80} {
 	encode gzip zstd
 
-	@api path /api/* /health /docs/*
+	@api path /api/v1/* /api/webhooks/* /health /docs/*
 	handle @api {
 		reverse_proxy api:8000
 	}

@@ -1,9 +1,11 @@
 /**
  * Server-side fetch wrapper for the FastAPI backend.
  *
- * SW-43 uses the dev-bypass header `X-Dev-User` while Auth.js v5 lands in Fase 5.
- * Once Cognito JWT lives in the session, swap `devUser` for the real bearer.
+ * Auth: usa el JWT (id_token de Cognito) de la sesión Auth.js → `Authorization:
+ * Bearer`. Si no hay sesión (dev local sin login), cae al header de bypass
+ * `X-Dev-User`, que la API solo acepta con ENV=local.
  */
+import { auth } from "@/auth";
 
 const DEV_USER = "dev@upc.edu.pe";
 
@@ -44,7 +46,14 @@ export async function apiFetch<T>(path: string, init: ApiRequest = {}): Promise<
   // hard-coding application/json would break multipart uploads (SW-21).
   const isFormData =
     typeof FormData !== "undefined" && rest.body instanceof FormData;
-  const baseHeaders: Record<string, string> = { "X-Dev-User": DEV_USER };
+  const baseHeaders: Record<string, string> = {};
+  const session = await auth();
+  if (session?.idToken) {
+    baseHeaders["Authorization"] = `Bearer ${session.idToken}`;
+  } else {
+    // Fallback dev: la API solo acepta X-Dev-User con ENV=local.
+    baseHeaders["X-Dev-User"] = DEV_USER;
+  }
   if (!isFormData) {
     baseHeaders["Content-Type"] = "application/json";
   }
