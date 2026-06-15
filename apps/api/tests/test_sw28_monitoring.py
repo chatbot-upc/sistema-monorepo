@@ -10,6 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chatbot_api.core.timezone import LOCAL_UTC_OFFSET, today_local_start
 from chatbot_api.models import Conversation, Message
 from chatbot_api.models.enums import ConversationStatus, MessageRole
 from tests.factories import make_conversation, make_student
@@ -22,6 +23,12 @@ async def _seed_messages(db: AsyncSession) -> Conversation:
     conv = await make_conversation(db, student_phone="+51900028001")
 
     now = datetime.now()
+    # created_at se guarda como UTC naive; "hoy" se mide en hora de Lima
+    # (to_local). Cerca de la medianoche de Lima, "hace 5-30 min" caería en el
+    # día anterior y los tokens/conversaciones de hoy darían 0 → flaky. Acotamos
+    # el timestamp para que nunca cruce la medianoche de Lima; sigue dentro de la
+    # última hora porque, de aplicarse el tope, estaríamos a <1h de medianoche.
+    today_utc_floor = today_local_start() - LOCAL_UTC_OFFSET + timedelta(minutes=1)
     rows: list[dict[str, Any]] = [
         # 3 inbound messages last hour (2 SBERT, 1 fallback)
         {"role": MessageRole.student, "delta": timedelta(minutes=5), "fallback": False},
@@ -49,7 +56,7 @@ async def _seed_messages(db: AsyncSession) -> Conversation:
             role=r["role"],
             content=f"msg-{i}",
             retrieved_chunks=[],
-            created_at=now - r["delta"],
+            created_at=max(now - r["delta"], today_utc_floor),
             intent_used_fallback=r.get("fallback")
             if r["role"] == MessageRole.student
             else None,
