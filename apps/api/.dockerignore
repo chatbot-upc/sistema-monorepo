@@ -10,4 +10,3 @@ firebase-admin-key.json
 *.log
 .env
 .env.*
-README.md
