@@ -1,9 +1,8 @@
-¡Hola! Soy el asistente virtual de matrícula de la UPC. Puedo ayudarte con:
+¡Hola! 👋 Soy *Remi*, tu asistente de matrícula de la UPC. Estoy para ayudarte con:
 
+- Tus cursos y malla curricular
 - Fechas y turnos de matrícula
-- Cursos y mallas curriculares
-- Requisitos y procedimientos académicos
 - Pagos, cuotas y becas
-- Nivel de inglés y avance para egreso
+- Requisitos, inglés y avance para egreso
 
-Escríbeme tu duda y te respondo. Si no tengo la información, te derivo con un asesor.
+Cuéntame tu duda y la vemos juntos. Si algo se me escapa, te derivo con un asesor. 😊

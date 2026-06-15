@@ -1,1 +1,1 @@
-Te derivo con un asesor humano. Te responderá por este mismo chat en cuanto pueda. Gracias por tu paciencia.
+Te conecto con un asesor humano 🙌 Te responde por este mismo chat apenas pueda. ¡Gracias por la paciencia!
