@@ -17,6 +17,7 @@ from chatbot_api.models import Document
 from chatbot_api.models.enums import DocumentStatus
 from chatbot_api.rag.embeddings import get_embeddings
 from chatbot_api.rag.loaders import load_by_extension
+from chatbot_api.rag.malla_normalizer import normalize_malla_chunks
 from chatbot_api.rag.splitter import split_for_document
 from chatbot_api.repositories.document_chunk import document_chunk_repository
 
@@ -57,6 +58,11 @@ async def _ingest_async(document_id: int) -> None:
                 # Splitter estructural: mallas → 1 chunk por ciclo (con la carrera
                 # como contexto); resto → chunking normal por caracteres.
                 splits = split_for_document(lc_docs, title=doc.title)
+                # Mallas: normaliza cada chunk de ciclo a filas limpias y
+                # uniformes (gpt-4o-mini), porque el PDF se extrae en layouts
+                # impredecibles (horizontal/vertical) y el LLM de respuesta
+                # alucina con el texto crudo. No-mallas pasan intactas.
+                splits = await normalize_malla_chunks(splits)
                 texts = [s.page_content for s in splits]
                 ocr_chunks = sum(
                     1 for s in splits if s.metadata.get("source") == "ocr"

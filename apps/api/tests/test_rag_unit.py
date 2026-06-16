@@ -1,7 +1,11 @@
 """Unit tests for RAG components (no DB, no OpenAI)."""
 
-from langchain_core.documents import Document as LCDocument
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.documents import Document as LCDocument
+from langchain_core.messages import AIMessage
+
+from chatbot_api.rag.malla_normalizer import normalize_malla_chunks
 from chatbot_api.rag.splitter import get_splitter, split_for_document
 
 _MALLA_TEXT = """MALLA CURRICULAR
@@ -30,6 +34,50 @@ def test_split_for_document_malla_splits_by_cycle() -> None:
     assert "AM224 Branding" in c6.page_content  # requisito real preservado
     assert "CICLO 1" not in c6.page_content
     assert "Marketing I" not in c6.page_content  # curso de otro ciclo no se cuela
+
+
+async def test_normalize_skips_when_no_cycle() -> None:
+    """Sin chunks de ciclo, no llama al LLM y devuelve la lista tal cual."""
+    chunks = [LCDocument(page_content="Calendario académico 2026", metadata={})]
+    with patch("chatbot_api.rag.malla_normalizer._build_chat") as build:
+        out = await normalize_malla_chunks(chunks)
+    build.assert_not_called()
+    assert out is chunks
+
+
+async def test_normalize_rewrites_cycle_chunk() -> None:
+    """El chunk de ciclo se reescribe limpio; el preámbulo (sin CICLO) queda igual."""
+    preamble = LCDocument(
+        page_content="Diseño y Gestión de Moda\nCREDITOS GENERALES 40",
+        metadata={"section": "malla"},
+    )
+    cycle = LCDocument(
+        page_content="Diseño y Gestión de Moda\n8\n▸▸ CICLO 8\n23\nDM290\n...",
+        metadata={"section": "malla"},
+    )
+    clean = (
+        "Diseño y Gestión de Moda — Ciclo 8 (23 créditos)\n"
+        "- DM290 Estrategias comerciales en la moda — 7 créditos — "
+        "Requisitos: 120 créditos cumplidos"
+    )
+    chat = MagicMock()
+    chat.ainvoke = AsyncMock(return_value=AIMessage(content=clean))
+    with patch("chatbot_api.rag.malla_normalizer._build_chat", return_value=chat):
+        out = await normalize_malla_chunks([preamble, cycle])
+    assert out[0].page_content == preamble.page_content  # preámbulo intacto
+    assert out[1].page_content == clean
+    assert out[1].metadata.get("normalized") is True
+    chat.ainvoke.assert_awaited_once()
+
+
+async def test_normalize_falls_back_on_error() -> None:
+    """Si la pasada LLM falla, conserva el texto crudo (nunca queda peor)."""
+    cycle = LCDocument(page_content="▸▸ CICLO 3\nABC12 Curso\n3", metadata={})
+    chat = MagicMock()
+    chat.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
+    with patch("chatbot_api.rag.malla_normalizer._build_chat", return_value=chat):
+        out = await normalize_malla_chunks([cycle])
+    assert out[0].page_content == cycle.page_content
 
 
 def test_split_for_document_non_malla_uses_recursive() -> None:
