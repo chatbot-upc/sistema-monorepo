@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chatbot_api.core.settings import get_settings
 from chatbot_api.rag.tools import (
     escalate_to_human,
+    list_programs,
     make_search_knowledge_base,
     reply_to_message,
 )
@@ -117,6 +118,7 @@ def _get_agent(system_prompt: str, program: str | None = None) -> Any:
         tools=[
             escalate_to_human,
             reply_to_message,
+            list_programs,
             make_search_knowledge_base(program),
         ],
         system_prompt=system_prompt,
