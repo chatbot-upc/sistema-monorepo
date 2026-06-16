@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_vision_model: str = "gpt-4o-mini"
+    # Normalizador de mallas (ingesta, one-shot): parseo difícil de tablas →
+    # modelo más capaz. No usar nano aquí. Subir a "gpt-5" si una malla falla.
+    openai_normalizer_model: str = "gpt-5-mini"
 
     local_uploads_dir: Path = Path("./uploads")
 

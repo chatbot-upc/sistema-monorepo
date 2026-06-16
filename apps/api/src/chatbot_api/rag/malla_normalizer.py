@@ -19,7 +19,7 @@ import re
 
 import structlog
 from langchain_core.documents import Document as LCDocument
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
@@ -33,36 +33,78 @@ _CYCLE_HINT = re.compile(r"(?i)\bCICLO\s+\d+\b")
 
 _SYSTEM = """Eres un normalizador de mallas curriculares de la UPC. Recibes el texto CRUDO de
 UN ciclo de una malla, extraído de un PDF. El layout es impredecible: puede venir con las
-columnas de cada curso pegadas en una sola línea, o con un dato por línea (vertical). Tu
-trabajo es reescribirlo limpio y uniforme, SIN inventar ni omitir nada.
+columnas de cada curso en una sola línea (horizontal), o con un dato por línea (vertical).
+Tu trabajo es reescribirlo limpio y uniforme, SIN inventar, omitir ni duplicar nada.
 
-Estructura de cada fila de curso (en este orden): CÓDIGO (2-3 letras + números, p. ej.
-DM290, CM36) · NOMBRE del curso · números de HORAS · número de CRÉDITOS · área (Carrera /
-General / Electivo) · más números · al final, los REQUISITOS (otros cursos con formato
-"código nombre" separados por ';', o condiciones como "120 Créditos cumplidos").
+Estructura de una fila de curso (de izquierda a derecha): CÓDIGO (2-3 letras + números, p.
+ej. DM290, CM36) · NOMBRE del curso · números de HORAS · número de CRÉDITOS · ÁREA (la
+palabra "Carrera", "General" o "Electivo") · a veces más números · al final los REQUISITOS.
 
-Devuelve EXACTAMENTE este formato y nada más:
-<Carrera si aparece> — Ciclo <N> (<total> créditos)
+LA REGLA MÁS IMPORTANTE — el ÁREA es el separador:
+- Todo lo que está ANTES del área (Carrera/General/Electivo) es EL CURSO: su código,
+  nombre, horas y créditos.
+- Todo lo que está DESPUÉS del área son los REQUISITOS de ESE curso: otros cursos con
+  formato "código nombre" (separados por ';') o condiciones como "120 Créditos cumplidos".
+- Los códigos que aparecen DESPUÉS del área son REQUISITOS, NUNCA cursos nuevos del ciclo,
+  AUNQUE parezcan cursos (mismo formato código+nombre, p. ej. "SI385 IHC y Tecnologías
+  Móviles"). Jamás los conviertas en una fila de curso aparte.
+
+Cómo separar las filas:
+- Formato horizontal (una fila por línea): CADA LÍNEA no vacía es EXACTAMENTE UN curso. El
+  curso es el código+nombre al inicio de esa línea; sus requisitos son lo que esté después
+  del área en ESA MISMA línea.
+- Formato vertical (un dato por línea): una fila nueva empieza cuando aparece un CÓDIGO solo
+  en su línea; acumula las líneas siguientes (nombre, números, área, requisitos) hasta el
+  próximo código que abre línea.
+
+Devuelve EXACTAMENTE este formato y nada más (la primera línea lleva la CARRERA —que
+aparece al inicio del texto— y el ciclo):
+<Carrera> — Ciclo <N> (<total> créditos)
 - <CÓDIGO> <Nombre> — <créditos> créditos — Requisitos: <req1>; <req2>
 - Electivo — <créditos> créditos — Requisitos: ninguno
 
-Reglas estrictas:
-- El curso del ciclo es el que EMPIEZA la fila (su código + nombre), o "Electivo". Lo que
-  aparece al FINAL de la fila son REQUISITOS, NO cursos del ciclo: nunca pongas un
-  requisito como si fuera un curso.
-- CRÉDITOS de un curso: el número de créditos (NO las horas). La SUMA de los créditos de
-  los cursos del ciclo debe coincidir con el total del ciclo (el número junto al encabezado
-  "CICLO N"); úsalo para elegir bien cuál columna son los créditos.
-- REQUISITOS: cópialos tal cual del final de la fila. Si la fila no termina en requisitos,
+Reglas finales:
+- CRÉDITOS: el número de créditos del curso (NO las horas). La SUMA de los créditos de los
+  cursos debe coincidir con el total del ciclo (el número junto a "CICLO N"); úsalo para
+  validar que no agregaste ni perdiste cursos ni elegiste mal la columna de créditos.
+- REQUISITOS: cópialos tal cual del final de la fila. Si no hay nada después del área,
   escribe "Requisitos: ninguno". No inventes requisitos.
-- NO inventes, NO agregues, NO quites cursos. Usa solo lo que está en el texto.
 - Responde solo con el texto normalizado, sin explicaciones ni bloques de código."""
+
+# Few-shot con el caso exacto que falló: requisitos (SI385, SI400) idénticos en formato a
+# cursos. Le enseña que lo que va tras el área es requisito, y que # de cursos = # de líneas.
+_EXAMPLE_IN = "\n".join(
+    [
+        "Ingeniería de Sistemas de Información",
+        "5",
+        "▸▸ CICLO 5  21",
+        "MA642 Estadística Aplicada I 64 4 4 3.0 1.0 4 General 1 MA262 Cálculo I",
+        "SI704 Arquitectura de Negocio 64 4 4 4 Carrera 2 2 SI385 IHC y Tecnologias Moviles",
+        "MA263 Cálculo II 96 6 6 4.0 2.0 6 Carrera 2 MA262 Cálculo I",
+        "SI393 Fundamentos de Sistemas de Información 32 32 3 3 2.0 1.0 3 Carrera 2 1 "
+        "SI400 Diseño De Base De Datos",
+        "Electivo 64 4 4 4 Electivo",
+    ]
+)
+
+_EXAMPLE_OUT = "\n".join(
+    [
+        "Ingeniería de Sistemas de Información — Ciclo 5 (21 créditos)",
+        "- MA642 Estadística Aplicada I — 4 créditos — Requisitos: MA262 Cálculo I",
+        "- SI704 Arquitectura de Negocio — 4 créditos — Requisitos: "
+        "SI385 IHC y Tecnologías Móviles",
+        "- MA263 Cálculo II — 6 créditos — Requisitos: MA262 Cálculo I",
+        "- SI393 Fundamentos de Sistemas de Información — 3 créditos — Requisitos: "
+        "SI400 Diseño De Base De Datos",
+        "- Electivo — 4 créditos — Requisitos: ninguno",
+    ]
+)
 
 
 def _build_chat() -> ChatOpenAI:
     s = get_settings()
     return ChatOpenAI(
-        model=s.openai_model,
+        model=s.openai_normalizer_model,
         api_key=SecretStr(s.openai_api_key),
         temperature=0,
     )
@@ -95,7 +137,12 @@ async def normalize_malla_chunks(chunks: list[LCDocument]) -> list[LCDocument]:
             continue
         try:
             resp = await chat.ainvoke(
-                [SystemMessage(content=_SYSTEM), HumanMessage(content=c.page_content)]
+                [
+                    SystemMessage(content=_SYSTEM),
+                    HumanMessage(content=_EXAMPLE_IN),
+                    AIMessage(content=_EXAMPLE_OUT),
+                    HumanMessage(content=c.page_content),
+                ]
             )
             text = _content_to_str(resp.content).strip()
             if not text:
