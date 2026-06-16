@@ -76,6 +76,11 @@ services:
     restart: unless-stopped
     env_file: .env
     command: celery -A chatbot_api.core.celery_app worker --pool=solo --loglevel=info
+    # El worker comparte imagen con el API, que hornea un HEALTHCHECK a :8000.
+    # El worker no sirve HTTP -> ese check siempre falla y lo marca (unhealthy)
+    # aunque esté vivo. Se desactiva el heredado (no es un servicio HTTP).
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy
