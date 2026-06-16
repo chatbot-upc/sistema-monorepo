@@ -18,6 +18,30 @@ from .retriever import retrieve
 log = structlog.get_logger()
 
 
+async def _resolve_program(db: Any, scope: str) -> str | None:
+    """Resuelve un scope de carrera 'corto'/informal a la carrera oficial ÚNICA
+    que lo contiene.
+
+    Ej: "marketing" → "administracion-marketing"; "sistemas" → "sistemas-informacion".
+    Si hay 0 o >1 candidatos (ambiguo, p. ej. "administracion" calza con varias),
+    devuelve None → el caller cae a búsqueda global. Compara por subconjunto de
+    tokens para no mezclar carreras parecidas.
+    """
+    rows = (
+        await db.execute(
+            select(Document.program)
+            .where(
+                Document.status == DocumentStatus.indexed,
+                Document.program.is_not(None),
+            )
+            .distinct()
+        )
+    ).scalars().all()
+    toks = set(scope.split("-"))
+    cands = sorted({p for p in rows if p and toks.issubset(set(p.split("-")))})
+    return cands[0] if len(cands) == 1 else None
+
+
 def make_search_knowledge_base(program: str | None = None) -> Any:
     """Construye la tool de búsqueda scopeada a la carrera del alumno (SW-46).
 
@@ -63,13 +87,24 @@ def make_search_knowledge_base(program: str | None = None) -> Any:
             async with factory() as db:
                 results = await retrieve(db, query, k=top_k, program=scope)
                 kept = [(c, d) for c, d in results if (1 - d) >= min_score]
-                # Fail-open: si scopeamos por carrera pero no hubo resultados (la
-                # carrera no matchea exacto), reintenta GLOBAL y deja que el agente
-                # elija la malla correcta de los [fuente: ...].
+                used = scope
+                # Resolución tolerante: el agente pasó una carrera corta/informal
+                # que no matchea exacto (p. ej. "marketing" vs "administracion-
+                # marketing"). Busca la carrera oficial ÚNICA que la contenga y
+                # reintenta acotado a ESA (mejor que global, que mezcla mallas).
+                if not kept and scope is not None:
+                    resolved = await _resolve_program(db, scope)
+                    if resolved is not None and resolved != scope:
+                        results = await retrieve(db, query, k=top_k, program=resolved)
+                        kept = [(c, d) for c, d in results if (1 - d) >= min_score]
+                        used = resolved
+                # Último recurso: global (el agente elige la malla correcta de
+                # los [fuente: ...]).
                 fellback = False
                 if not kept and scope is not None:
                     results = await retrieve(db, query, k=top_k, program=None)
                     kept = [(c, d) for c, d in results if (1 - d) >= min_score]
+                    used = None
                     fellback = True
         finally:
             await engine.dispose()
@@ -79,6 +114,7 @@ def make_search_knowledge_base(program: str | None = None) -> Any:
             "rag_search",
             query=query,
             scope=scope,
+            used=used,
             fellback=fellback,
             top_score=round(top_score, 3),
             min_score=min_score,

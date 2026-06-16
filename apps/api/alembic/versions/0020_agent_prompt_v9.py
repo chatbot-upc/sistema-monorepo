@@ -1,4 +1,29 @@
-# Remi — Asistente de matrícula UPC · System Prompt v9
+"""seed agent_system prompt v9 — no inventar requisitos + malla solo de la carrera
+
+Refuerza dos cosas tras pruebas en prod:
+- Requisitos/prerrequisitos de cursos: NO inventarlos (las mallas no los traen).
+- Usar SOLO la malla de la carrera del estudiante; si el [fuente: ...] es de otra
+  carrera, no usar esos cursos.
+Desactiva v8. Idempotente.
+
+Revision ID: 0020_agent_prompt_v9
+Revises: 0019_agent_prompt_v8
+Create Date: 2026-06-16 03:00:00.000000
+
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0020_agent_prompt_v9"
+down_revision: str | Sequence[str] | None = "0019_agent_prompt_v8"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+_AGENT_SYSTEM_V9 = r"""# Remi — Asistente de matrícula UPC · System Prompt v9
 
 Eres **Remi**, el asistente virtual de matrícula de la **Universidad Peruana de Ciencias Aplicadas (UPC)**. Acompañas a estudiantes de pregrado con sus dudas de matrícula, becas, fechas, costos, mallas curriculares y reglamentos.
 
@@ -65,3 +90,31 @@ Cuando la pregunta sea sobre **cursos / malla / plan de estudios / ciclo**, ACOT
 
 **Usuario:** "cuánto cuesta un iPhone?"
 **Remi:** "Eso ya se sale un poco de lo mío 🙂. Pero con gusto te ayudo con cualquier tema de tu matrícula o vida académica en la UPC, ¿lo vemos?"
+"""
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    if conn.execute(sa.text(
+        "SELECT 1 FROM prompt_versions WHERE name='agent_system' AND version=9"
+    )).first():
+        return
+    conn.execute(sa.text(
+        "UPDATE prompt_versions SET active=false WHERE name='agent_system' AND active=true"
+    ))
+    conn.execute(
+        sa.text(
+            "INSERT INTO prompt_versions "
+            "(name, version, content, active, created_by, created_at, updated_at) "
+            "VALUES ('agent_system', 9, :content, true, NULL, now(), now())"
+        ),
+        {"content": _AGENT_SYSTEM_V9},
+    )
+
+
+def downgrade() -> None:
+    conn = op.get_bind()
+    conn.execute(sa.text("DELETE FROM prompt_versions WHERE name='agent_system' AND version=9"))
+    conn.execute(sa.text(
+        "UPDATE prompt_versions SET active=true WHERE name='agent_system' AND version=8"
+    ))

@@ -57,13 +57,17 @@ class CicdStack(Stack):
             description="GitHub Actions (main) -> SSM Run Command para redeploy de la EC2",
         )
 
-        # Permiso 1: enviar el comando, pero SOLO a instancias del proyecto.
+        # Permiso 1a: usar el documento gestionado AWS-RunShellScript. Es público
+        # de AWS y NO tiene el tag Project, así que va SIN condición (la condición
+        # de tag aquí lo denegaría, que era el bug del deploy).
         deploy_role.add_to_policy(iam.PolicyStatement(
             actions=["ssm:SendCommand"],
-            resources=[
-                f"arn:aws:ssm:{self.region}::document/AWS-RunShellScript",
-                f"arn:aws:ec2:{self.region}:{self.account}:instance/*",
-            ],
+            resources=[f"arn:aws:ssm:{self.region}::document/AWS-RunShellScript"],
+        ))
+        # Permiso 1b: enviar el comando SOLO a instancias del proyecto (tag).
+        deploy_role.add_to_policy(iam.PolicyStatement(
+            actions=["ssm:SendCommand"],
+            resources=[f"arn:aws:ec2:{self.region}:{self.account}:instance/*"],
             conditions={
                 "StringEquals": {"aws:ResourceTag/Project": "chatbot-upc"},
             },

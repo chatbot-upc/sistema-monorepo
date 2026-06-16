@@ -69,4 +69,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # mode=min: solo exporta las capas finales (no la gigante de torch/CUDA).
+          # mode=max tardaba 15min+ exportando GBs a la caché de GHA tras el push.
+          cache-to: type=gha,mode=min
