@@ -17,7 +17,7 @@ from chatbot_api.models import Document
 from chatbot_api.models.enums import DocumentStatus
 from chatbot_api.rag.embeddings import get_embeddings
 from chatbot_api.rag.loaders import load_by_extension
-from chatbot_api.rag.splitter import get_splitter
+from chatbot_api.rag.splitter import split_for_document
 from chatbot_api.repositories.document_chunk import document_chunk_repository
 
 log = structlog.get_logger()
@@ -54,7 +54,9 @@ async def _ingest_async(document_id: int) -> None:
 
             try:
                 lc_docs = await load_by_extension(tmp_path)
-                splits = get_splitter().split_documents(lc_docs)
+                # Splitter estructural: mallas → 1 chunk por ciclo (con la carrera
+                # como contexto); resto → chunking normal por caracteres.
+                splits = split_for_document(lc_docs, title=doc.title)
                 texts = [s.page_content for s in splits]
                 ocr_chunks = sum(
                     1 for s in splits if s.metadata.get("source") == "ocr"
@@ -86,6 +88,10 @@ async def _ingest_async(document_id: int) -> None:
                     }
                     for i, (s, vec) in enumerate(zip(splits, vectors, strict=True))
                 ]
+                # Idempotente: borra los chunks previos antes de insertar, para que
+                # re-ingestar (p. ej. tras cambiar el chunk_size) re-indexe limpio
+                # en vez de duplicar.
+                await document_chunk_repository.delete_by_document(db, doc.id)
                 await document_chunk_repository.bulk_insert(db, doc.id, chunks_data)
 
                 doc.status = DocumentStatus.indexed
