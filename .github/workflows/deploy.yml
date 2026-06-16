@@ -80,10 +80,18 @@ jobs:
         run: |
           CMD="${{ steps.send.outputs.command_id }}"
           INST="${{ steps.target.outputs.instance_id }}"
-          # wait command-executed devuelve !=0 si el comando falla; lo toleramos
-          # para imprimir el detalle nosotros mismos y dar un error claro.
-          aws ssm wait command-executed --command-id "$CMD" --instance-id "$INST" || true
-          STATUS=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query Status --output text)
+          # Poll propio (no `wait command-executed`, que se rinde a los ~100s): el
+          # `docker compose pull` de la imagen api es pesado, así que damos hasta
+          # ~12 min.
+          STATUS="Pending"
+          for i in $(seq 1 72); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query Status --output text 2>/dev/null || echo "Pending")
+            echo "intento $i: $STATUS"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+              *) sleep 10 ;;
+            esac
+          done
           echo "===== STDOUT ====="
           aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query StandardOutputContent --output text
           echo "===== STDERR ====="
