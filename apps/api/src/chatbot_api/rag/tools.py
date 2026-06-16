@@ -4,10 +4,14 @@ from typing import Any
 
 import structlog
 from langchain_core.tools import tool
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from chatbot_api.core.programs import canonical_program
 from chatbot_api.core.settings import get_settings
 from chatbot_api.core.text import public_doc_url
+from chatbot_api.models import Document
+from chatbot_api.models.enums import DocumentStatus
 
 from .retriever import retrieve
 
@@ -23,41 +27,59 @@ def make_search_knowledge_base(program: str | None = None) -> Any:
     """
 
     @tool
-    async def search_knowledge_base(query: str, top_k: int = 5) -> str:
+    async def search_knowledge_base(
+        query: str, career: str | None = None, top_k: int = 5
+    ) -> str:
         """Busca info oficial UPC en la base de conocimiento (PDFs y HTML scrapeados).
 
         Usa esta tool ANTES de responder cualquier pregunta sobre UPC: matrícula,
         fechas, costos, becas, reglamentos, mallas, calendarios.
 
         Args:
-            query: la consulta del usuario o keywords concretas.
+            query: la consulta del usuario o keywords concretas. Si es sobre la
+                malla/cursos, INCLUYE el nombre de la carrera en el texto.
+            career: carrera del estudiante para acotar a SU malla. Pásala si la
+                conoces (del perfil o de lo que dijo en el chat), idealmente la
+                carrera OFICIAL (usa `list_programs` para resolver typos/variantes).
+                Omítela si no la sabes → búsqueda global.
             top_k: cuántos chunks devolver (default 5).
 
         Returns:
-            Texto con fragmentos relevantes, cada uno con score y doc_id como cita.
+            Fragmentos relevantes, cada uno con [fuente: <nombre> — <url>].
         """
         # Fresh engine per call: the agent runs inside asyncio.run() in Celery
         # workers, so a process-wide cached engine would end up tied to a dead
         # event loop on the second task. Spinning up a transient engine sidesteps
         # the "different loop" RuntimeError at the cost of ~10ms per call.
+        # Scope efectivo: la carrera que pase el agente (del chat) tiene prioridad
+        # sobre la del perfil (closure). canonical_program normaliza ambas al mismo
+        # slug que la malla.
+        scope = canonical_program(career) if career else program
         settings = get_settings()
+        min_score = settings.rag_min_score
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         try:
             factory = async_sessionmaker(engine, expire_on_commit=False)
             async with factory() as db:
-                results = await retrieve(db, query, k=top_k, program=program)
+                results = await retrieve(db, query, k=top_k, program=scope)
+                kept = [(c, d) for c, d in results if (1 - d) >= min_score]
+                # Fail-open: si scopeamos por carrera pero no hubo resultados (la
+                # carrera no matchea exacto), reintenta GLOBAL y deja que el agente
+                # elija la malla correcta de los [fuente: ...].
+                fellback = False
+                if not kept and scope is not None:
+                    results = await retrieve(db, query, k=top_k, program=None)
+                    kept = [(c, d) for c, d in results if (1 - d) >= min_score]
+                    fellback = True
         finally:
             await engine.dispose()
 
-        # Piso de relevancia: descarta chunks débiles. Si NINGUNO supera el
-        # umbral, devolvemos "no_results" para que el agente derive en vez de
-        # responder con basura (el KB puede no tener doc para ese tema).
-        min_score = settings.rag_min_score
-        kept = [(c, d) for c, d in results if (1 - d) >= min_score]
         top_score = max((1 - d for _, d in results), default=0.0)
         log.info(
             "rag_search",
             query=query,
+            scope=scope,
+            fellback=fellback,
             top_score=round(top_score, 3),
             min_score=min_score,
             kept=len(kept),
@@ -85,6 +107,42 @@ def make_search_knowledge_base(program: str | None = None) -> Any:
 # Instancia global sin scope: la usan tests u otros importadores que no tienen
 # perfil de alumno. El flujo real arma la tool por request con make_*().
 search_knowledge_base = make_search_knowledge_base(None)
+
+
+@tool
+async def list_programs() -> str:
+    """Lista las carreras (mallas) disponibles en la base de conocimiento.
+
+    Úsala para resolver la carrera que menciona el estudiante a la carrera
+    OFICIAL, AUNQUE la escriba con errores ortográficos o nombre informal
+    (p. ej. "sistmas", "ing de sistemas" → "sistemas-informacion"). Luego pasa
+    esa carrera oficial como `career` a `search_knowledge_base` para acotar a la
+    malla correcta.
+
+    Returns:
+        Una carrera por línea (slug oficial), o "no_programs" si no hay mallas.
+    """
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            rows = (
+                await db.execute(
+                    select(Document.program)
+                    .where(
+                        Document.status == DocumentStatus.indexed,
+                        Document.program.is_not(None),
+                    )
+                    .distinct()
+                )
+            ).scalars().all()
+    finally:
+        await engine.dispose()
+
+    progs = sorted({p for p in rows if p})
+    log.info("list_programs", count=len(progs))
+    return "\n".join(progs) if progs else "no_programs"
 
 
 @tool

@@ -1,4 +1,30 @@
-# Remi — Asistente de matrícula UPC · System Prompt v8
+"""seed agent_system prompt v8 — resolución de carrera por contexto (typo-tolerante)
+
+Acota la búsqueda de mallas a la carrera del estudiante usando el contexto de la
+conversación (no solo el perfil): el agente resuelve la carrera (aunque tenga
+errores ortográficos / nombre informal) con la tool `list_programs`, la pasa como
+`career` a `search_knowledge_base` y usa solo la malla de esa carrera. Desactiva v7.
+
+Idempotente: no hace nada si ya existe agent_system v8.
+
+Revision ID: 0019_agent_prompt_v8
+Revises: 0018_agent_prompt_v7
+Create Date: 2026-06-16 00:00:00.000000
+
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0019_agent_prompt_v8"
+down_revision: str | Sequence[str] | None = "0018_agent_prompt_v7"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+_AGENT_SYSTEM_V8 = r"""# Remi — Asistente de matrícula UPC · System Prompt v8
 
 Eres **Remi**, el asistente virtual de matrícula de la **Universidad Peruana de Ciencias Aplicadas (UPC)**. Acompañas a estudiantes de pregrado con sus dudas de matrícula, becas, fechas, costos, mallas curriculares y reglamentos.
 
@@ -64,3 +90,42 @@ Cuando la pregunta sea sobre **cursos / malla / plan de estudios / ciclo**, ACOT
 
 **Usuario:** "cuánto cuesta un iPhone?"
 **Remi:** "Eso ya se sale un poco de lo mío 🙂. Pero con gusto te ayudo con cualquier tema de tu matrícula o vida académica en la UPC, ¿lo vemos?"
+"""
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    exists = conn.execute(
+        sa.text(
+            "SELECT 1 FROM prompt_versions WHERE name = 'agent_system' AND version = 8"
+        )
+    ).first()
+    if exists:
+        return
+    conn.execute(
+        sa.text(
+            "UPDATE prompt_versions SET active = false "
+            "WHERE name = 'agent_system' AND active = true"
+        )
+    )
+    conn.execute(
+        sa.text(
+            "INSERT INTO prompt_versions "
+            "(name, version, content, active, created_by, created_at, updated_at) "
+            "VALUES ('agent_system', 8, :content, true, NULL, now(), now())"
+        ),
+        {"content": _AGENT_SYSTEM_V8},
+    )
+
+
+def downgrade() -> None:
+    conn = op.get_bind()
+    conn.execute(
+        sa.text("DELETE FROM prompt_versions WHERE name = 'agent_system' AND version = 8")
+    )
+    conn.execute(
+        sa.text(
+            "UPDATE prompt_versions SET active = true "
+            "WHERE name = 'agent_system' AND version = 7"
+        )
+    )
