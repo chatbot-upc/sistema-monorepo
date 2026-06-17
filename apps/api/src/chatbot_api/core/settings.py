@@ -52,9 +52,11 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_vision_model: str = "gpt-4o-mini"
-    # Normalizador de mallas (ingesta, one-shot): parseo difícil de tablas →
-    # modelo más capaz. No usar nano aquí. Subir a "gpt-5" si una malla falla.
+    # Extractor de mallas (ingesta, one-shot): parsea la tabla a un esquema. Es un
+    # razonador validado para esta tarea; el reasoning_effort bajo lo mantiene
+    # rápido/barato. Tunéable por env sin rebuild (modelo y esfuerzo).
     openai_normalizer_model: str = "gpt-5-mini"
+    openai_normalizer_reasoning_effort: str = "minimal"
 
     local_uploads_dir: Path = Path("./uploads")
 

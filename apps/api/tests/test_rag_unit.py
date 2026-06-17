@@ -3,9 +3,14 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.documents import Document as LCDocument
-from langchain_core.messages import AIMessage
 
-from chatbot_api.rag.malla_normalizer import normalize_malla_chunks
+from chatbot_api.rag.malla_extractor import (
+    CourseRow,
+    MallaExtraction,
+    build_malla_chunks,
+    extract_malla_rows,
+    looks_like_malla,
+)
 from chatbot_api.rag.splitter import get_splitter, split_for_document
 
 _MALLA_TEXT = """MALLA CURRICULAR
@@ -36,48 +41,70 @@ def test_split_for_document_malla_splits_by_cycle() -> None:
     assert "Marketing I" not in c6.page_content  # curso de otro ciclo no se cuela
 
 
-async def test_normalize_skips_when_no_cycle() -> None:
-    """Sin chunks de ciclo, no llama al LLM y devuelve la lista tal cual."""
-    chunks = [LCDocument(page_content="Calendario académico 2026", metadata={})]
-    with patch("chatbot_api.rag.malla_normalizer._build_chat") as build:
-        out = await normalize_malla_chunks(chunks)
-    build.assert_not_called()
-    assert out is chunks
+def test_looks_like_malla() -> None:
+    """Detecta malla por densidad de códigos de curso; no-malla → False."""
+    malla = " ".join(f"PS{500 + i} Curso {i}" for i in range(10))  # 10 códigos
+    assert looks_like_malla(malla) is True
+    assert looks_like_malla("Calendario académico 2026, fechas de matrícula") is False
 
 
-async def test_normalize_rewrites_cycle_chunk() -> None:
-    """El chunk de ciclo se reescribe limpio; el preámbulo (sin CICLO) queda igual."""
-    preamble = LCDocument(
-        page_content="Diseño y Gestión de Moda\nCREDITOS GENERALES 40",
-        metadata={"section": "malla"},
+def test_build_malla_chunks_groups_by_cycle() -> None:
+    """Un chunk por ciclo, con créditos sumados, requisitos formateados y metadata."""
+    rows = [
+        CourseRow(
+            ciclo=5, codigo="MA642", nombre="Estadística", creditos=4,
+            requisitos=["MA262 Cálculo I"],
+        ),
+        CourseRow(ciclo=5, codigo="", nombre="Electivo", creditos=3, requisitos=[]),
+        CourseRow(ciclo=6, codigo="CM00", nombre="Branding", creditos=3, requisitos=[]),
+    ]
+    chunks = build_malla_chunks(rows, title="Marketing")
+    assert len(chunks) == 2  # ciclo 5 y 6
+    c5 = next(c for c in chunks if c.metadata["ciclo"] == 5)
+    assert "Marketing — Ciclo 5 (7 créditos)" in c5.page_content
+    assert "- MA642 Estadística — 4 créditos — Requisitos: MA262 Cálculo I" in c5.page_content
+    assert "- Electivo — 3 créditos — Requisitos: ninguno" in c5.page_content
+    assert c5.metadata["section"] == "malla"
+    assert c5.metadata["normalized"] is True
+
+
+async def test_extract_malla_rows_returns_courses() -> None:
+    """Devuelve los cursos cuando is_malla=True; [] cuando is_malla=False."""
+    extraction = MallaExtraction(
+        is_malla=True,
+        cursos=[
+            CourseRow(
+                ciclo=5, codigo="MA642", nombre="Estadística Aplicada I", creditos=4,
+                requisitos=["MA262 Cálculo I"],
+            )
+        ],
     )
-    cycle = LCDocument(
-        page_content="Diseño y Gestión de Moda\n8\n▸▸ CICLO 8\n23\nDM290\n...",
-        metadata={"section": "malla"},
-    )
-    clean = (
-        "Diseño y Gestión de Moda — Ciclo 8 (23 créditos)\n"
-        "- DM290 Estrategias comerciales en la moda — 7 créditos — "
-        "Requisitos: 120 créditos cumplidos"
-    )
+    structured = MagicMock()
+    structured.ainvoke = AsyncMock(return_value=extraction)
     chat = MagicMock()
-    chat.ainvoke = AsyncMock(return_value=AIMessage(content=clean))
-    with patch("chatbot_api.rag.malla_normalizer._build_chat", return_value=chat):
-        out = await normalize_malla_chunks([preamble, cycle])
-    assert out[0].page_content == preamble.page_content  # preámbulo intacto
-    assert out[1].page_content == clean
-    assert out[1].metadata.get("normalized") is True
-    chat.ainvoke.assert_awaited_once()
+    chat.with_structured_output = MagicMock(return_value=structured)
+    with patch("chatbot_api.rag.malla_extractor._build_chat", return_value=chat):
+        rows = await extract_malla_rows("texto crudo", title="Sistemas")
+    assert len(rows) == 1
+    assert rows[0].codigo == "MA642"
+
+    structured.ainvoke = AsyncMock(
+        return_value=MallaExtraction(is_malla=False, cursos=[])
+    )
+    with patch("chatbot_api.rag.malla_extractor._build_chat", return_value=chat):
+        rows = await extract_malla_rows("no es una malla", title=None)
+    assert rows == []
 
 
-async def test_normalize_falls_back_on_error() -> None:
-    """Si la pasada LLM falla, conserva el texto crudo (nunca queda peor)."""
-    cycle = LCDocument(page_content="▸▸ CICLO 3\nABC12 Curso\n3", metadata={})
+async def test_extract_malla_rows_falls_back_on_error() -> None:
+    """Si la llamada LLM falla, devuelve [] (la ingesta cae al chunking normal)."""
+    structured = MagicMock()
+    structured.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
     chat = MagicMock()
-    chat.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
-    with patch("chatbot_api.rag.malla_normalizer._build_chat", return_value=chat):
-        out = await normalize_malla_chunks([cycle])
-    assert out[0].page_content == cycle.page_content
+    chat.with_structured_output = MagicMock(return_value=structured)
+    with patch("chatbot_api.rag.malla_extractor._build_chat", return_value=chat):
+        rows = await extract_malla_rows("texto", title="X")
+    assert rows == []
 
 
 def test_split_for_document_non_malla_uses_recursive() -> None:

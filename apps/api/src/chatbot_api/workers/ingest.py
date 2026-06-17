@@ -17,7 +17,11 @@ from chatbot_api.models import Document
 from chatbot_api.models.enums import DocumentStatus
 from chatbot_api.rag.embeddings import get_embeddings
 from chatbot_api.rag.loaders import load_by_extension
-from chatbot_api.rag.malla_normalizer import normalize_malla_chunks
+from chatbot_api.rag.malla_extractor import (
+    build_malla_chunks,
+    extract_malla_rows,
+    looks_like_malla,
+)
 from chatbot_api.rag.splitter import split_for_document
 from chatbot_api.repositories.document_chunk import document_chunk_repository
 
@@ -57,12 +61,19 @@ async def _ingest_async(document_id: int) -> None:
                 lc_docs = await load_by_extension(tmp_path)
                 # Splitter estructural: mallas → 1 chunk por ciclo (con la carrera
                 # como contexto); resto → chunking normal por caracteres.
-                splits = split_for_document(lc_docs, title=doc.title)
-                # Mallas: normaliza cada chunk de ciclo a filas limpias y
-                # uniformes (gpt-4o-mini), porque el PDF se extrae en layouts
-                # impredecibles (horizontal/vertical) y el LLM de respuesta
-                # alucina con el texto crudo. No-mallas pasan intactas.
-                splits = await normalize_malla_chunks(splits)
+                # Mallas: extracción a esquema en 1 llamada (lee cualquier layout
+                # del PDF) → chunks limpios por ciclo. Si no es malla o la
+                # extracción falla, cae al chunking normal por caracteres.
+                full_text = "\n".join(d.page_content for d in lc_docs)
+                rows = (
+                    await extract_malla_rows(full_text, title=doc.title)
+                    if looks_like_malla(full_text)
+                    else []
+                )
+                if rows:
+                    splits = build_malla_chunks(rows, title=doc.title)
+                else:
+                    splits = split_for_document(lc_docs, title=doc.title)
                 texts = [s.page_content for s in splits]
                 ocr_chunks = sum(
                     1 for s in splits if s.metadata.get("source") == "ocr"
