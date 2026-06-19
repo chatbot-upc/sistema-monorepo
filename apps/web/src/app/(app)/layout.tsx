@@ -17,10 +17,10 @@ export default async function AppLayout({
     .catch(() => undefined);
 
   return (
-    <div className="flex min-h-screen bg-bg-2 p-4 gap-4">
+    <div className="flex min-h-screen bg-bg-2 p-3 sm:p-4 gap-4">
       <Sidebar conversationsCount={conversationsCount} />
       <main className="flex-1 min-w-0 flex flex-col gap-5">
-        <Topbar />
+        <Topbar conversationsCount={conversationsCount} />
         {children}
       </main>
       <FcmRegisterClient />

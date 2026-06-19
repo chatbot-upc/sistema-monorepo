@@ -2,43 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard,
-  MessageSquare,
-  FileText,
-  Tag,
-  Sparkles,
-  BarChart3,
-  Activity,
-  ChevronUp,
-  User,
-  LogOut,
-} from "lucide-react";
+import { ChevronUp, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/Avatar";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/ToastProvider";
-
-type NavItem = {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  badge?: number;
-};
-
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  {
-    href: "/conversations",
-    label: "Conversaciones",
-    icon: MessageSquare,
-  },
-  { href: "/documents", label: "Documentos", icon: FileText },
-  { href: "/intents", label: "Intenciones", icon: Tag },
-  { href: "/prompts", label: "Prompt", icon: Sparkles },
-  { href: "/reports", label: "Reportes", icon: BarChart3 },
-  { href: "/monitoring", label: "Monitoreo", icon: Activity },
-];
+import { NAV } from "./nav";
 
 interface SidebarProps {
   conversationsCount?: number;
@@ -50,7 +19,7 @@ export function Sidebar({ conversationsCount }: SidebarProps) {
   const { toast } = useToast();
 
   return (
-    <aside className="bg-surface rounded-3xl flex flex-col gap-1 w-[260px] shrink-0 sticky top-4 h-[calc(100vh-32px)] px-4 py-6">
+    <aside className="hidden md:flex bg-surface rounded-3xl flex-col gap-1 w-[260px] shrink-0 sticky top-4 h-[calc(100vh-32px)] px-4 py-6">
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-3 pt-1 pb-6">
         <div className="w-7 h-7 rounded-lg bg-primary text-white flex items-center justify-center relative font-extrabold text-sm">
