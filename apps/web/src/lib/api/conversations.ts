@@ -121,7 +121,7 @@ export async function fetchConversations(
       status: params.status,
       phone: params.phone,
       page: params.page ?? 1,
-      size: params.size ?? 50,
+      size: params.size ?? 20,
     },
   });
 }
