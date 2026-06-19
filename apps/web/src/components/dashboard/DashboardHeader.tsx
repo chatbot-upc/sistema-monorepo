@@ -9,7 +9,7 @@ export function DashboardHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="flex items-end justify-between">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="text-[28px] font-semibold tracking-[-0.6px] leading-none">
           Resumen

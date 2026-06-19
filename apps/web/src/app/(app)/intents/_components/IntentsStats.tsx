@@ -14,7 +14,7 @@ export function IntentsStats({ intents }: IntentsStatsProps) {
   const examples = intents.reduce((acc, i) => acc + i.examples.length, 0);
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <MiniStat label="Total" value={total.toString()} />
       <MiniStat label="Activas" value={active.toString()} />
       <MiniStat label="Inactivas" value={inactive.toString()} />

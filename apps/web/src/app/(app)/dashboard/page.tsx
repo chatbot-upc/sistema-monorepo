@@ -92,7 +92,7 @@ export default async function DashboardPage() {
       <DashboardHeader />
 
       {/* KPIs de la HU: activas, escaladas, tema top, certeza */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Conversaciones activas"
           value={String(stats.conversations_active)}
@@ -129,7 +129,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-[1.4fr_1fr_1.2fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1.2fr] gap-4">
         {/* Conversaciones (últimos 7 días) */}
         <Card className="p-6 relative">
           <div className="flex justify-between items-start">

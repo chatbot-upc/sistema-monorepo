@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import {
   fetchConversation,
   fetchConversations,
+  fetchConversationStats,
   fetchMessages,
   type ConversationDetail,
   type ConversationListItem,
@@ -20,10 +21,12 @@ export default async function ConversationDetailPage(props: {
     notFound();
   }
 
-  // Parallel fetch: list (sidebar) + detail + messages. La barra lateral arranca
-  // con la primera página (20); el resto llega vía scroll infinito en el cliente.
-  const [listPage, detail, messagesPage] = await Promise.all([
+  // Parallel fetch: list (sidebar) + stats + detail + messages. La barra lateral
+  // arranca con la primera página (20); el resto llega vía scroll infinito. Los
+  // contadores de los tabs salen de stats (toda la base, no solo lo cargado).
+  const [listPage, stats, detail, messagesPage] = await Promise.all([
     fetchConversations({ size: 20 }),
+    fetchConversationStats().catch(() => null),
     fetchConversation(conversationId).catch(() => null),
     fetchMessages(conversationId).catch(() => null),
   ]);
@@ -34,7 +37,14 @@ export default async function ConversationDetailPage(props: {
     <ConversationsClient
       key={detail.id}
       conversations={listPage.items as ConversationListItem[]}
-      totalConversations={listPage.total}
+      initialStats={
+        stats ?? {
+          total: listPage.total,
+          abierta: 0,
+          cerrada: 0,
+          takeover: 0,
+        }
+      }
       activeConversation={detail as ConversationDetail}
       activeMessages={messagesPage.items as MessageRead[]}
     />

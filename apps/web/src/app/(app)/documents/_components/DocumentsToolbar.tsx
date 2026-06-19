@@ -36,7 +36,7 @@ export function DocumentsToolbar({
   onStatusFilter,
 }: DocumentsToolbarProps) {
   return (
-    <Card className="flex items-center gap-3 p-4">
+    <Card className="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
       <div className="flex-1 bg-surface-2 rounded-full px-4 py-2.5 pl-11 relative">
         <Search
           size={16}

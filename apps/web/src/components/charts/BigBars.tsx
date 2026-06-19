@@ -18,7 +18,7 @@ interface BigBarsProps {
 
 export function BigBars({ data, yMax = 1000 }: BigBarsProps) {
   return (
-    <div className="grid grid-cols-[50px_1fr] gap-4 h-[380px] relative">
+    <div className="grid grid-cols-[36px_1fr] sm:grid-cols-[50px_1fr] gap-2 sm:gap-4 h-[280px] sm:h-[380px] relative">
       {/* Y axis */}
       <div className="flex flex-col-reverse justify-between h-full pb-9 pt-2 font-mono text-[11px] text-muted-2">
         <span>0</span>
@@ -29,7 +29,7 @@ export function BigBars({ data, yMax = 1000 }: BigBarsProps) {
       </div>
 
       {/* Bars */}
-      <div className="grid grid-cols-5 gap-4 h-full pb-9 relative">
+      <div className="grid grid-cols-5 gap-1.5 sm:gap-4 h-full pb-9 relative">
         {data.map((item) => {
           const heightPct = (item.value / yMax) * 100;
           return (
@@ -59,7 +59,7 @@ export function BigBars({ data, yMax = 1000 }: BigBarsProps) {
         })}
 
         {/* X axis labels */}
-        <div className="absolute bottom-0 left-0 right-0 grid grid-cols-5 gap-4 font-mono text-[11px] text-muted text-center pt-3">
+        <div className="absolute bottom-0 left-0 right-0 grid grid-cols-5 gap-1.5 sm:gap-4 font-mono text-[9px] sm:text-[11px] text-muted text-center pt-3">
           {data.map((item) => (
             <span key={item.name}>{item.name}</span>
           ))}

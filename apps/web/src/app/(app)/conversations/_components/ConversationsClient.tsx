@@ -35,6 +35,7 @@ import { parseApiDate } from "@/lib/dates";
 import { useConversationStream } from "@/lib/use-conversation-stream";
 import { requestWsTicket } from "../_actions/ws-ticket";
 import {
+  conversationStatsAction,
   deleteAction,
   loadConversationsAction,
 } from "../_actions/conversations";
@@ -44,6 +45,7 @@ import { ContactPanel } from "./ContactPanel";
 import type {
   ConversationDetail,
   ConversationListItem,
+  ConversationStats,
   ConversationStatus,
   DeliveryStatus,
   MessageRead,
@@ -52,7 +54,7 @@ import type {
 
 interface Props {
   conversations: ConversationListItem[];
-  totalConversations: number;
+  initialStats: ConversationStats;
   activeConversation: ConversationDetail;
   activeMessages: MessageRead[];
 }
@@ -60,6 +62,16 @@ interface Props {
 // Tamaño de página del scroll infinito de la barra lateral. Debe coincidir con
 // el `size` con que el server hace el fetch inicial en [id]/page.tsx.
 const PAGE_SIZE = 20;
+
+type FilterKey = "todas" | "activas" | "escaladas";
+
+// Cada tab mapea a un estado del backend (el filtro es server-side). "todas" no
+// filtra → cubre toda la base.
+const STATUS_FOR_FILTER: Record<FilterKey, ConversationStatus | undefined> = {
+  todas: undefined,
+  activas: "abierta",
+  escaladas: "takeover",
+};
 
 const STATUS_TONE: Record<
   ConversationStatus,
@@ -75,8 +87,6 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   cerrada: "Cerrada",
   takeover: "Escalada",
 };
-
-type FilterKey = "todas" | "activas" | "escaladas";
 
 const GRADIENTS = ["coral", "blue", "violet", "mint", "amber", "rose"] as const;
 
@@ -127,7 +137,7 @@ function fmtDate(iso: string | null): string {
 
 export function ConversationsClient({
   conversations: initialConversations,
-  totalConversations: initialTotal,
+  initialStats,
   activeConversation,
   activeMessages: initialMessages,
 }: Props) {
@@ -145,12 +155,19 @@ export function ConversationsClient({
   const [replyingTo, setReplyingTo] = useState<MessageRead | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
+  // ── Contadores de los tabs (toda la base, no solo lo cargado) ──────────
+  const [stats, setStats] = useState(initialStats);
+  const refreshStats = useCallback(async () => {
+    const res = await conversationStatsAction();
+    if (res.ok) setStats(res.data);
+  }, []);
+
   // ── Scroll infinito de la barra lateral ───────────────────────────────
   // `loadedPage` vive en un ref para que el IntersectionObserver siempre lea el
   // valor actual sin recrearse en cada carga.
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(
-    initialConversations.length < initialTotal,
+    initialConversations.length < initialStats.total,
   );
   const loadedPageRef = useRef(1);
   const listRef = useRef<HTMLUListElement | null>(null);
@@ -160,7 +177,11 @@ export function ConversationsClient({
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     const nextPage = loadedPageRef.current + 1;
-    const result = await loadConversationsAction(nextPage, PAGE_SIZE);
+    const result = await loadConversationsAction(
+      nextPage,
+      PAGE_SIZE,
+      STATUS_FOR_FILTER[filter],
+    );
     if (result.ok) {
       loadedPageRef.current = nextPage;
       setConversations((prev) => {
@@ -177,7 +198,7 @@ export function ConversationsClient({
       });
     }
     setLoadingMore(false);
-  }, [loadingMore, hasMore, toast]);
+  }, [loadingMore, hasMore, filter, toast]);
 
   // Observa un sentinel al final de la lista: cuando entra en viewport (con 200px
   // de margen) pide la siguiente página.
@@ -194,6 +215,40 @@ export function ConversationsClient({
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
+  // Cambio de tab → recargamos desde el servidor la página 1 de ese estado, así
+  // el filtro cubre TODA la base (no solo lo ya cargado). El primer render usa lo
+  // que ya entregó el server (filtro "todas"), por eso lo saltamos.
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    let cancelled = false;
+    setLoadingMore(true);
+    (async () => {
+      const res = await loadConversationsAction(
+        1,
+        PAGE_SIZE,
+        STATUS_FOR_FILTER[filter],
+      );
+      if (cancelled) return;
+      if (res.ok) {
+        setConversations(res.data.items);
+        loadedPageRef.current = 1;
+        setHasMore(res.data.page < res.data.pages);
+      } else {
+        toast.error("No se pudo aplicar el filtro", {
+          description: res.error,
+        });
+      }
+      setLoadingMore(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, toast]);
+
   // After deleting the active conversation, jump straight to the next sibling
   // (single navigation) instead of bouncing through /conversations, which
   // re-fetches and redirects — that double hop is what flashes on screen.
@@ -209,6 +264,7 @@ export function ConversationsClient({
         if (result.ok) {
           toast.success("Conversación eliminada");
           setConversations((prev) => prev.filter((c) => c.id !== target.id));
+          void refreshStats();
           setDeleteTarget(null);
           if (target.id === active.id) {
             goAfterDeletingActive(target.id);
@@ -226,11 +282,13 @@ export function ConversationsClient({
   // on id change, so we only need to sync when the sidebar list changes.
   useEffect(() => {
     setConversations(initialConversations);
-    // El server reentregó la primera página → reiniciamos el cursor del scroll
-    // infinito para que vuelva a paginar desde la 2 hacia abajo.
+    setStats(initialStats);
+    setFilter("todas");
+    // El server reentregó la primera página ("todas") → reiniciamos el cursor del
+    // scroll infinito para que vuelva a paginar desde la 2 hacia abajo.
     loadedPageRef.current = 1;
-    setHasMore(initialConversations.length < initialTotal);
-  }, [initialConversations, initialTotal]);
+    setHasMore(initialConversations.length < initialStats.total);
+  }, [initialConversations, initialStats]);
 
   const { connected } = useConversationStream(requestWsTicket, (event) => {
     if (event.type === "message.created") {
@@ -288,6 +346,7 @@ export function ConversationsClient({
           c.id === data.conversation_id ? { ...c, status: data.status } : c,
         ),
       );
+      void refreshStats();
       if (data.conversation_id === active.id) {
         setActive((prev) => ({ ...prev, status: data.status }));
       }
@@ -296,6 +355,7 @@ export function ConversationsClient({
       setConversations((prev) =>
         prev.filter((c) => c.id !== data.conversation_id),
       );
+      void refreshStats();
       // Si borraron la que estoy viendo (desde otra pestaña / otro admin),
       // salto directo a la siguiente conversación.
       if (data.conversation_id === active.id) {
@@ -318,28 +378,25 @@ export function ConversationsClient({
     );
   }, [conversations]);
 
-  const counts = useMemo(
-    () => ({
-      todas: conversations.length,
-      activas: conversations.filter((c) => c.status === "abierta").length,
-      escaladas: conversations.filter((c) => c.status === "takeover").length,
-    }),
-    [conversations],
-  );
+  // Contadores reales por estado (vienen del backend, no de lo cargado).
+  const counts = {
+    todas: stats.total,
+    activas: stats.abierta,
+    escaladas: stats.takeover,
+  };
 
+  // El estado ya lo filtra el servidor; aquí solo aplicamos la búsqueda por texto
+  // sobre lo que está cargado.
   const visibleConversations = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sortedConversations.filter((c) => {
-      if (filter === "activas" && c.status !== "abierta") return false;
-      if (filter === "escaladas" && c.status !== "takeover") return false;
-      if (!q) return true;
-      return (
+    if (!q) return sortedConversations;
+    return sortedConversations.filter(
+      (c) =>
         (c.display_name?.toLowerCase().includes(q) ?? false) ||
         c.student_phone.toLowerCase().includes(q) ||
-        (c.last_message_preview?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [sortedConversations, filter, query]);
+        (c.last_message_preview?.toLowerCase().includes(q) ?? false),
+    );
+  }, [sortedConversations, query]);
 
   const activeName =
     active.student_profile?.full_name ??

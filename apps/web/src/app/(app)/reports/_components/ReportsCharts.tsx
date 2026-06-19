@@ -47,7 +47,7 @@ export function ReportsCharts({ daily, intents, loading }: Props) {
             Sin conversaciones en este periodo.
           </div>
         ) : (
-          <div className="flex items-end gap-3 mt-8 h-[260px]">
+          <div className="flex items-end gap-1.5 sm:gap-3 mt-8 h-[260px]">
             {daily.map((d) => {
               const barPx = Math.round((d.count / dailyMax) * 200);
               return (

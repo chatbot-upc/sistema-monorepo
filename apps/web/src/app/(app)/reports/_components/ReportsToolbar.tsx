@@ -49,9 +49,9 @@ export function ReportsToolbar({
   };
 
   return (
-    <Card className="flex items-center gap-3 p-4">
+    <Card className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4">
       <DateRangePicker value={range} onChange={onRangeChange} />
-      <div className="ml-auto">
+      <div className="sm:ml-auto">
         <Dropdown align="end">
           <Dropdown.Trigger>
             <Button variant="dark" size="lg" disabled={!data}>

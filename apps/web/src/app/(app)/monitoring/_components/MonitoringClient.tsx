@@ -148,7 +148,7 @@ export function MonitoringClient({ initial }: MonitoringClientProps) {
             <Activity size={14} strokeWidth={2} />
             Clasificador de intenciones (24h)
           </div>
-          <div className="grid grid-cols-3 gap-4 mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
             <div>
               <div className="text-[11px] text-muted uppercase tracking-[0.6px] font-semibold">
                 Mensajes
