@@ -4,7 +4,7 @@ import { fetchConversations } from "@/lib/api/conversations";
 export const dynamic = "force-dynamic";
 
 export default async function ConversationsPage() {
-  const page = await fetchConversations({ size: 50 });
+  const page = await fetchConversations({ size: 20 });
   if (page.items.length === 0) {
     // No conversations yet — show the empty list scaffold.
     return (

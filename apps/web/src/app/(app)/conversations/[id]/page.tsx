@@ -20,9 +20,10 @@ export default async function ConversationDetailPage(props: {
     notFound();
   }
 
-  // Parallel fetch: list (sidebar) + detail + messages.
+  // Parallel fetch: list (sidebar) + detail + messages. La barra lateral arranca
+  // con la primera página (20); el resto llega vía scroll infinito en el cliente.
   const [listPage, detail, messagesPage] = await Promise.all([
-    fetchConversations({ size: 50 }),
+    fetchConversations({ size: 20 }),
     fetchConversation(conversationId).catch(() => null),
     fetchMessages(conversationId).catch(() => null),
   ]);
@@ -33,6 +34,7 @@ export default async function ConversationDetailPage(props: {
     <ConversationsClient
       key={detail.id}
       conversations={listPage.items as ConversationListItem[]}
+      totalConversations={listPage.total}
       activeConversation={detail as ConversationDetail}
       activeMessages={messagesPage.items as MessageRead[]}
     />

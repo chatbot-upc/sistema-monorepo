@@ -7,6 +7,7 @@ import {
   createNote,
   deleteConversation,
   deleteNote,
+  fetchConversations,
   fetchHistory,
   fetchNotes,
   reopenConversation,
@@ -19,7 +20,9 @@ import {
   updateNote,
   type ConversationDetail,
   type ConversationHistory,
+  type ConversationListItem,
   type InternalNote,
+  type Page,
   type SendMessageResponse,
   type Tag,
 } from "@/lib/api/conversations";
@@ -131,6 +134,24 @@ export async function deleteAction(id: number): Promise<ActionResult> {
     return { ok: true, data: undefined };
   } catch (err) {
     return toError(err, "No se pudo eliminar la conversación.");
+  }
+}
+
+// Carga una página adicional de la lista para el scroll infinito de la barra
+// lateral. El componente cliente no puede llamar al API directo (apiFetch usa
+// la sesión del servidor), así que pasa por aquí.
+export async function loadConversationsAction(
+  page: number,
+  size = 20,
+): Promise<ActionResult<Page<ConversationListItem>>> {
+  if (!Number.isInteger(page) || page < 1) {
+    return { ok: false, status: 400, error: "Página inválida." };
+  }
+  try {
+    const data = await fetchConversations({ page, size });
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudieron cargar más conversaciones.");
   }
 }
 

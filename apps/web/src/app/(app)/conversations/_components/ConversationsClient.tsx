@@ -1,7 +1,14 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -27,7 +34,10 @@ import { cn } from "@/lib/cn";
 import { parseApiDate } from "@/lib/dates";
 import { useConversationStream } from "@/lib/use-conversation-stream";
 import { requestWsTicket } from "../_actions/ws-ticket";
-import { deleteAction } from "../_actions/conversations";
+import {
+  deleteAction,
+  loadConversationsAction,
+} from "../_actions/conversations";
 import { MessageComposer } from "./MessageComposer";
 import { ConversationActions } from "./ConversationActions";
 import { ContactPanel } from "./ContactPanel";
@@ -42,9 +52,14 @@ import type {
 
 interface Props {
   conversations: ConversationListItem[];
+  totalConversations: number;
   activeConversation: ConversationDetail;
   activeMessages: MessageRead[];
 }
+
+// Tamaño de página del scroll infinito de la barra lateral. Debe coincidir con
+// el `size` con que el server hace el fetch inicial en [id]/page.tsx.
+const PAGE_SIZE = 20;
 
 const STATUS_TONE: Record<
   ConversationStatus,
@@ -112,6 +127,7 @@ function fmtDate(iso: string | null): string {
 
 export function ConversationsClient({
   conversations: initialConversations,
+  totalConversations: initialTotal,
   activeConversation,
   activeMessages: initialMessages,
 }: Props) {
@@ -128,6 +144,55 @@ export function ConversationsClient({
   const [filter, setFilter] = useState<FilterKey>("todas");
   const [replyingTo, setReplyingTo] = useState<MessageRead | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Scroll infinito de la barra lateral ───────────────────────────────
+  // `loadedPage` vive en un ref para que el IntersectionObserver siempre lea el
+  // valor actual sin recrearse en cada carga.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(
+    initialConversations.length < initialTotal,
+  );
+  const loadedPageRef = useRef(1);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const nextPage = loadedPageRef.current + 1;
+    const result = await loadConversationsAction(nextPage, PAGE_SIZE);
+    if (result.ok) {
+      loadedPageRef.current = nextPage;
+      setConversations((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        const fresh = result.data.items.filter((c) => !seen.has(c.id));
+        return [...prev, ...fresh];
+      });
+      setHasMore(nextPage < result.data.pages);
+    } else {
+      // Cortamos el scroll infinito para no reintentar en bucle ante un error.
+      setHasMore(false);
+      toast.error("No se pudieron cargar más conversaciones", {
+        description: result.error,
+      });
+    }
+    setLoadingMore(false);
+  }, [loadingMore, hasMore, toast]);
+
+  // Observa un sentinel al final de la lista: cuando entra en viewport (con 200px
+  // de margen) pide la siguiente página.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { root: listRef.current, rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   // After deleting the active conversation, jump straight to the next sibling
   // (single navigation) instead of bouncing through /conversations, which
@@ -161,7 +226,11 @@ export function ConversationsClient({
   // on id change, so we only need to sync when the sidebar list changes.
   useEffect(() => {
     setConversations(initialConversations);
-  }, [initialConversations]);
+    // El server reentregó la primera página → reiniciamos el cursor del scroll
+    // infinito para que vuelva a paginar desde la 2 hacia abajo.
+    loadedPageRef.current = 1;
+    setHasMore(initialConversations.length < initialTotal);
+  }, [initialConversations, initialTotal]);
 
   const { connected } = useConversationStream(requestWsTicket, (event) => {
     if (event.type === "message.created") {
@@ -360,8 +429,8 @@ export function ConversationsClient({
             />
           </div>
 
-          <ul className="flex-1 overflow-auto px-2 pb-2">
-            {visibleConversations.length === 0 ? (
+          <ul ref={listRef} className="flex-1 overflow-auto px-2 pb-2">
+            {visibleConversations.length === 0 && !hasMore ? (
               <li className="px-3 py-8 text-center text-[12px] text-muted">
                 Sin resultados.
               </li>
@@ -427,6 +496,14 @@ export function ConversationsClient({
                   </li>
                 );
               })
+            )}
+            {hasMore && (
+              <li
+                ref={sentinelRef}
+                className="px-3 py-4 text-center text-[11px] text-muted-2"
+              >
+                {loadingMore ? "Cargando más…" : ""}
+              </li>
             )}
           </ul>
         </Card>
