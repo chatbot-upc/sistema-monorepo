@@ -15,6 +15,8 @@ import {
   Bot,
   Check,
   CheckCheck,
+  ChevronLeft,
+  Info,
   Plus,
   Reply,
   Search,
@@ -154,6 +156,13 @@ export function ConversationsClient({
   const [filter, setFilter] = useState<FilterKey>("todas");
   const [replyingTo, setReplyingTo] = useState<MessageRead | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Layout responsive ──────────────────────────────────────────────────
+  // En <md solo cabe un panel: alternamos lista ⟷ hilo. Por defecto mostramos
+  // el hilo (estamos viendo una conversación concreta). En <xl la ficha del
+  // contacto se abre como overlay desde el botón del hilo.
+  const [mobileView, setMobileView] = useState<"list" | "thread">("thread");
+  const [contactOpen, setContactOpen] = useState(false);
 
   // ── Contadores de los tabs (toda la base, no solo lo cargado) ──────────
   const [stats, setStats] = useState(initialStats);
@@ -417,7 +426,12 @@ export function ConversationsClient({
   return (
     <div className="flex gap-4 min-w-0 h-[calc(100dvh-96px)]">
       {/* ── Columna 1 · Lista de conversaciones ───────────────────── */}
-      <aside className="w-[330px] shrink-0 min-h-0">
+      <aside
+        className={cn(
+          "w-full md:w-[330px] shrink-0 min-h-0 md:block",
+          mobileView === "list" ? "block" : "hidden",
+        )}
+      >
         <Card variant="flush" className="h-full flex flex-col">
           <header className="px-5 pt-5 pb-3 flex items-center justify-between">
             <h2 className="text-[19px] font-bold tracking-[-0.4px]">Mensajes</h2>
@@ -567,10 +581,24 @@ export function ConversationsClient({
       </aside>
 
       {/* ── Columna 2 · Hilo de chat ──────────────────────────────── */}
-      <section className="flex-1 min-w-0 min-h-0">
+      <section
+        className={cn(
+          "flex-1 min-w-0 min-h-0 md:block",
+          mobileView === "thread" ? "block" : "hidden",
+        )}
+      >
         <Card variant="flush" className="h-full flex flex-col">
-          <header className="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
+          <header className="px-4 sm:px-5 py-4 border-b border-line flex items-center justify-between gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {/* Volver a la lista (solo móvil, donde solo cabe un panel) */}
+              <button
+                type="button"
+                onClick={() => setMobileView("list")}
+                aria-label="Volver a la lista"
+                className="md:hidden shrink-0 -ml-1 w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-fg hover:bg-bg-2 transition-colors"
+              >
+                <ChevronLeft size={20} strokeWidth={2} />
+              </button>
               <Avatar
                 initials={initialsOf(
                   active.student_profile?.full_name ?? active.display_name,
@@ -593,15 +621,26 @@ export function ConversationsClient({
                 </div>
               </div>
             </div>
-            <ConversationActions
-              conversationId={active.id}
-              status={active.status}
-            />
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Abrir ficha del contacto como overlay (cuando no es panel fijo) */}
+              <button
+                type="button"
+                onClick={() => setContactOpen(true)}
+                aria-label="Ver ficha del contacto"
+                className="xl:hidden w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-fg hover:bg-bg-2 transition-colors"
+              >
+                <Info size={18} strokeWidth={2} />
+              </button>
+              <ConversationActions
+                conversationId={active.id}
+                status={active.status}
+              />
+            </div>
           </header>
 
           <div
             ref={threadRef}
-            className="flex-1 overflow-auto px-6 py-5 space-y-4 bg-bg"
+            className="flex-1 overflow-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 bg-bg"
           >
             {messages.length === 0 ? (
               <div className="text-center text-muted text-sm py-12">
@@ -623,7 +662,12 @@ export function ConversationsClient({
       </section>
 
       {/* ── Columna 3 · Ficha del contacto ────────────────────────── */}
-      <ContactPanel conversation={active} onChange={handleConversationChange} />
+      <ContactPanel
+        conversation={active}
+        onChange={handleConversationChange}
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+      />
 
       {deleteTarget && (
         <ConfirmDialog
@@ -770,7 +814,7 @@ function Bubble({
   if (isStudent) {
     return (
       <div className="group flex flex-col items-start gap-1">
-        <div className="flex max-w-[82%] items-center gap-1">
+        <div className="flex max-w-[88%] sm:max-w-[82%] items-center gap-1">
           <div className="min-w-0 rounded-2xl rounded-bl-md bg-surface border border-line text-fg px-4 py-3 shadow-sm">
             {msg.quoted && <QuotedPreview quoted={msg.quoted} />}
             <div className="whitespace-pre-wrap text-[13px] leading-relaxed">
@@ -788,7 +832,7 @@ function Bubble({
 
   return (
     <div className="group flex flex-col items-end gap-1">
-      <div className="flex max-w-[82%] items-center gap-1">
+      <div className="flex max-w-[88%] sm:max-w-[82%] items-center gap-1">
         <ReplyButton onClick={() => onReply(msg)} />
         <div
           className={cn(
