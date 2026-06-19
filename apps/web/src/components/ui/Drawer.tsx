@@ -145,7 +145,9 @@ function DrawerRoot({
         data-anim="slide-right"
         data-state={animState}
         style={{ width }}
-        className="fixed top-0 right-0 h-screen z-drawer bg-surface rounded-l-3xl shadow-modal flex flex-col outline-none"
+        // max-w cap: si `width` (480 por defecto) supera el viewport en móvil,
+        // el CSS lo limita a viewport-2rem para que no se salga de la pantalla.
+        className="fixed top-0 right-0 h-screen max-w-[calc(100vw-2rem)] z-drawer bg-surface rounded-l-3xl shadow-modal flex flex-col outline-none"
       >
         {children}
       </div>
@@ -163,7 +165,7 @@ function DrawerHeader({
 }) {
   const { titleId, onClose } = useDrawerCtx();
   return (
-    <div className="flex items-start justify-between gap-3 px-6 py-5 border-b border-line">
+    <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-5 border-b border-line">
       <div className="min-w-0">
         <h2
           id={titleId}
@@ -197,7 +199,7 @@ function DrawerBody({
   className?: string;
 }) {
   return (
-    <div className={cn("flex-1 overflow-y-auto px-6 py-5", className)}>
+    <div className={cn("flex-1 overflow-y-auto px-4 sm:px-6 py-5", className)}>
       {children}
     </div>
   );
@@ -213,7 +215,7 @@ function DrawerFooter({
   return (
     <div
       className={cn(
-        "px-6 py-5 border-t border-line flex justify-end gap-2",
+        "px-4 sm:px-6 py-5 border-t border-line flex justify-end gap-2",
         className
       )}
     >

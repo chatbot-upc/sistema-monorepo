@@ -28,7 +28,10 @@ export function NotificationsDropdown() {
           )}
         </IconButton>
       </Dropdown.Trigger>
-      <Dropdown.Content className="!p-0 w-[360px]" minWidth={360}>
+      <Dropdown.Content
+        className="!p-0 w-[calc(100vw-1rem)] max-w-[360px]"
+        minWidth={0}
+      >
         <div className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="text-[15px] font-semibold text-fg">Notificaciones</div>
           {unreadCount > 0 && (
