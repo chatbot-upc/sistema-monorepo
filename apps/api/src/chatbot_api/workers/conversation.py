@@ -32,6 +32,7 @@ from chatbot_api.repositories.message import build_quoted_snapshot, message_repo
 from chatbot_api.repositories.student import student_repository
 from chatbot_api.schemas.whatsapp import ParsedInboundMessage
 from chatbot_api.services import (
+    billing_service,
     conversation_history_service,
     intent_classifier_service,
     push_service,
@@ -615,6 +616,36 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     correlation_id=correlation_id,
                 )
                 await db.commit()
+                return
+
+            # EP08 (SW-49/SW-50/SW-51): consulta personal de pagos → respuesta
+            # determinista con los datos simulados de facturación del estudiante.
+            # Se salta el RAG por completo: montos y fechas salen tal cual de la
+            # BD, sin riesgo de que el LLM reformule o alucine cifras. Mismo patrón
+            # que la rama `solicita_humano`.
+            if intent_result.get("intent_name") == "consulta_pagos":
+                reply_text = await billing_service.build_payment_reply(
+                    db, phone_e164=parsed.from_phone
+                )
+                payment_meta_id = await whatsapp_service.send_message(
+                    to=parsed.from_phone, body=reply_text
+                )
+                payment_msg = await message_repository.create_bot(
+                    db,
+                    conversation_id=conv.id,
+                    content=reply_text,
+                    meta_message_id=payment_meta_id,
+                )
+                await db.commit()
+                await publish_event(
+                    "message.created", message_to_event_payload(payment_msg)
+                )
+                log.info(
+                    "payment_reply_sent",
+                    correlation_id=correlation_id,
+                    conversation_id=conv.id,
+                    bot_message_id=payment_msg.id,
+                )
                 return
 
             if student_created:

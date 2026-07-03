@@ -6,6 +6,7 @@ import {
   Sparkles,
   BarChart3,
   Activity,
+  Receipt,
 } from "lucide-react";
 
 export type NavItem = {
@@ -24,5 +25,6 @@ export const NAV: NavItem[] = [
   { href: "/intents", label: "Intenciones", icon: Tag },
   { href: "/prompts", label: "Prompt", icon: Sparkles },
   { href: "/reports", label: "Reportes", icon: BarChart3 },
+  { href: "/billing", label: "Facturación", icon: Receipt },
   { href: "/monitoring", label: "Monitoreo", icon: Activity },
 ];
