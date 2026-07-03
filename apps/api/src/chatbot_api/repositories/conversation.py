@@ -124,6 +124,17 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         result = await db.execute(count_query)
         return int(result.scalar_one())
 
+    async def count_by_status(
+        self, db: AsyncSession
+    ) -> dict[ConversationStatus, int]:
+        """Conteo agrupado por estado en una sola query (para los tabs)."""
+        result = await db.execute(
+            select(Conversation.status, func.count(Conversation.id)).group_by(
+                Conversation.status
+            )
+        )
+        return {status: int(count) for status, count in result.all()}
+
     async def count_by_phone(self, db: AsyncSession, phone: str) -> int:
         result = await db.execute(
             select(func.count(Conversation.id)).where(

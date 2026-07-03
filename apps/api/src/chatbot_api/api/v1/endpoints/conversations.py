@@ -12,6 +12,7 @@ from chatbot_api.schemas.conversation import (
     ConversationDetail,
     ConversationHistory,
     ConversationListItem,
+    ConversationStats,
     SendMessageRequest,
     SendMessageResponse,
     StarUpdate,
@@ -44,6 +45,14 @@ async def list_conversations(
         phone=phone,
         pagination=PageParams(page=page, size=size),
     )
+
+
+@router.get("/stats", response_model=ConversationStats)
+async def conversation_stats(
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> ConversationStats:
+    return await conversation_service.get_stats(db)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)

@@ -64,3 +64,13 @@ class ConversationHistory(BaseModel):
     total_conversations: int
     total_messages: int
     first_contact: datetime | None = None
+
+
+class ConversationStats(BaseModel):
+    """Conteos totales por estado para los tabs de la barra lateral (no dependen
+    de la paginación: reflejan toda la base, no solo lo cargado)."""
+
+    total: int
+    abierta: int
+    cerrada: int
+    takeover: int
