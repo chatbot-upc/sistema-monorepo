@@ -51,3 +51,10 @@ class NotificationStatus(enum.StrEnum):
     sending = "sending"
     sent = "sent"
     failed = "failed"
+
+
+class BillingStatus(enum.StrEnum):
+    """Estado de una cuota de facturación simulada (EP08)."""
+
+    pendiente = "pendiente"
+    pagado = "pagado"

@@ -78,7 +78,7 @@ export function MessageComposer({
   }
 
   return (
-    <div className="border-t border-line px-4 py-3">
+    <div className="border-t border-line px-3 sm:px-4 py-3">
       {replyingTo && (
         <div className="mb-2 flex items-start gap-2 rounded-xl border-l-2 border-primary bg-surface-2 px-3 py-2">
           <Reply size={14} strokeWidth={2.5} className="mt-0.5 shrink-0 text-primary" />
@@ -105,7 +105,7 @@ export function MessageComposer({
           type="button"
           onClick={() => toast.info("Adjuntar archivo — próximamente")}
           aria-label="Adjuntar archivo"
-          className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-bg-2 transition-colors"
+          className="hidden sm:flex w-9 h-9 shrink-0 rounded-full items-center justify-center text-muted hover:text-primary hover:bg-bg-2 transition-colors"
         >
           <Paperclip size={17} strokeWidth={2} />
         </button>
@@ -113,7 +113,7 @@ export function MessageComposer({
           type="button"
           onClick={() => toast.info("Adjuntar documento — próximamente")}
           aria-label="Adjuntar documento"
-          className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-bg-2 transition-colors"
+          className="hidden sm:flex w-9 h-9 shrink-0 rounded-full items-center justify-center text-muted hover:text-primary hover:bg-bg-2 transition-colors"
         >
           <FileText size={17} strokeWidth={2} />
         </button>

@@ -8,6 +8,7 @@ from .document import Document
 from .document_chunk import DocumentChunk
 from .enums import (
     AdminRole,
+    BillingStatus,
     ConversationStatus,
     DocumentSourceType,
     DocumentStatus,
@@ -21,6 +22,7 @@ from .metrics_daily import MetricsDaily
 from .notification import Notification
 from .prompt_version import PromptVersion
 from .student import Student
+from .student_billing import StudentBillingInstallment
 from .student_profile import StudentProfile
 from .tag import Tag
 
@@ -29,6 +31,7 @@ __all__ = [
     "AdminDevice",
     "AdminRole",
     "Base",
+    "BillingStatus",
     "Conversation",
     "ConversationIntent",
     "ConversationStatus",
@@ -46,6 +49,7 @@ __all__ = [
     "NotificationStatus",
     "PromptVersion",
     "Student",
+    "StudentBillingInstallment",
     "StudentProfile",
     "Tag",
 ]

@@ -8,6 +8,7 @@ import {
   deleteConversation,
   deleteNote,
   fetchConversations,
+  fetchConversationStats,
   fetchHistory,
   fetchNotes,
   reopenConversation,
@@ -21,6 +22,8 @@ import {
   type ConversationDetail,
   type ConversationHistory,
   type ConversationListItem,
+  type ConversationStats,
+  type ConversationStatus,
   type InternalNote,
   type Page,
   type SendMessageResponse,
@@ -137,21 +140,35 @@ export async function deleteAction(id: number): Promise<ActionResult> {
   }
 }
 
-// Carga una página adicional de la lista para el scroll infinito de la barra
-// lateral. El componente cliente no puede llamar al API directo (apiFetch usa
-// la sesión del servidor), así que pasa por aquí.
+// Carga una página de la lista para el scroll infinito de la barra lateral,
+// opcionalmente filtrada por estado (el filtro es server-side: así el tab cubre
+// TODA la base, no solo lo ya cargado). El cliente no puede llamar al API
+// directo (apiFetch usa la sesión del servidor), así que pasa por aquí.
 export async function loadConversationsAction(
   page: number,
   size = 20,
+  status?: ConversationStatus,
 ): Promise<ActionResult<Page<ConversationListItem>>> {
   if (!Number.isInteger(page) || page < 1) {
     return { ok: false, status: 400, error: "Página inválida." };
   }
   try {
-    const data = await fetchConversations({ page, size });
+    const data = await fetchConversations({ page, size, status });
     return { ok: true, data };
   } catch (err) {
     return toError(err, "No se pudieron cargar más conversaciones.");
+  }
+}
+
+// Conteos totales por estado para los tabs (independientes de la paginación).
+export async function conversationStatsAction(): Promise<
+  ActionResult<ConversationStats>
+> {
+  try {
+    const data = await fetchConversationStats();
+    return { ok: true, data };
+  } catch (err) {
+    return toError(err, "No se pudieron cargar los contadores.");
   }
 }
 

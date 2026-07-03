@@ -15,6 +15,8 @@ import {
   Bot,
   Check,
   CheckCheck,
+  ChevronLeft,
+  Info,
   Plus,
   Reply,
   Search,
@@ -35,6 +37,7 @@ import { parseApiDate } from "@/lib/dates";
 import { useConversationStream } from "@/lib/use-conversation-stream";
 import { requestWsTicket } from "../_actions/ws-ticket";
 import {
+  conversationStatsAction,
   deleteAction,
   loadConversationsAction,
 } from "../_actions/conversations";
@@ -44,6 +47,7 @@ import { ContactPanel } from "./ContactPanel";
 import type {
   ConversationDetail,
   ConversationListItem,
+  ConversationStats,
   ConversationStatus,
   DeliveryStatus,
   MessageRead,
@@ -52,7 +56,7 @@ import type {
 
 interface Props {
   conversations: ConversationListItem[];
-  totalConversations: number;
+  initialStats: ConversationStats;
   activeConversation: ConversationDetail;
   activeMessages: MessageRead[];
 }
@@ -60,6 +64,16 @@ interface Props {
 // Tamaño de página del scroll infinito de la barra lateral. Debe coincidir con
 // el `size` con que el server hace el fetch inicial en [id]/page.tsx.
 const PAGE_SIZE = 20;
+
+type FilterKey = "todas" | "activas" | "escaladas";
+
+// Cada tab mapea a un estado del backend (el filtro es server-side). "todas" no
+// filtra → cubre toda la base.
+const STATUS_FOR_FILTER: Record<FilterKey, ConversationStatus | undefined> = {
+  todas: undefined,
+  activas: "abierta",
+  escaladas: "takeover",
+};
 
 const STATUS_TONE: Record<
   ConversationStatus,
@@ -75,8 +89,6 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   cerrada: "Cerrada",
   takeover: "Escalada",
 };
-
-type FilterKey = "todas" | "activas" | "escaladas";
 
 const GRADIENTS = ["coral", "blue", "violet", "mint", "amber", "rose"] as const;
 
@@ -127,7 +139,7 @@ function fmtDate(iso: string | null): string {
 
 export function ConversationsClient({
   conversations: initialConversations,
-  totalConversations: initialTotal,
+  initialStats,
   activeConversation,
   activeMessages: initialMessages,
 }: Props) {
@@ -145,12 +157,26 @@ export function ConversationsClient({
   const [replyingTo, setReplyingTo] = useState<MessageRead | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
+  // ── Layout responsive ──────────────────────────────────────────────────
+  // En <md solo cabe un panel: alternamos lista ⟷ hilo. Por defecto mostramos
+  // el hilo (estamos viendo una conversación concreta). En <xl la ficha del
+  // contacto se abre como overlay desde el botón del hilo.
+  const [mobileView, setMobileView] = useState<"list" | "thread">("thread");
+  const [contactOpen, setContactOpen] = useState(false);
+
+  // ── Contadores de los tabs (toda la base, no solo lo cargado) ──────────
+  const [stats, setStats] = useState(initialStats);
+  const refreshStats = useCallback(async () => {
+    const res = await conversationStatsAction();
+    if (res.ok) setStats(res.data);
+  }, []);
+
   // ── Scroll infinito de la barra lateral ───────────────────────────────
   // `loadedPage` vive en un ref para que el IntersectionObserver siempre lea el
   // valor actual sin recrearse en cada carga.
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(
-    initialConversations.length < initialTotal,
+    initialConversations.length < initialStats.total,
   );
   const loadedPageRef = useRef(1);
   const listRef = useRef<HTMLUListElement | null>(null);
@@ -160,7 +186,11 @@ export function ConversationsClient({
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     const nextPage = loadedPageRef.current + 1;
-    const result = await loadConversationsAction(nextPage, PAGE_SIZE);
+    const result = await loadConversationsAction(
+      nextPage,
+      PAGE_SIZE,
+      STATUS_FOR_FILTER[filter],
+    );
     if (result.ok) {
       loadedPageRef.current = nextPage;
       setConversations((prev) => {
@@ -177,7 +207,7 @@ export function ConversationsClient({
       });
     }
     setLoadingMore(false);
-  }, [loadingMore, hasMore, toast]);
+  }, [loadingMore, hasMore, filter, toast]);
 
   // Observa un sentinel al final de la lista: cuando entra en viewport (con 200px
   // de margen) pide la siguiente página.
@@ -194,6 +224,40 @@ export function ConversationsClient({
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
+  // Cambio de tab → recargamos desde el servidor la página 1 de ese estado, así
+  // el filtro cubre TODA la base (no solo lo ya cargado). El primer render usa lo
+  // que ya entregó el server (filtro "todas"), por eso lo saltamos.
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    let cancelled = false;
+    setLoadingMore(true);
+    (async () => {
+      const res = await loadConversationsAction(
+        1,
+        PAGE_SIZE,
+        STATUS_FOR_FILTER[filter],
+      );
+      if (cancelled) return;
+      if (res.ok) {
+        setConversations(res.data.items);
+        loadedPageRef.current = 1;
+        setHasMore(res.data.page < res.data.pages);
+      } else {
+        toast.error("No se pudo aplicar el filtro", {
+          description: res.error,
+        });
+      }
+      setLoadingMore(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, toast]);
+
   // After deleting the active conversation, jump straight to the next sibling
   // (single navigation) instead of bouncing through /conversations, which
   // re-fetches and redirects — that double hop is what flashes on screen.
@@ -209,6 +273,7 @@ export function ConversationsClient({
         if (result.ok) {
           toast.success("Conversación eliminada");
           setConversations((prev) => prev.filter((c) => c.id !== target.id));
+          void refreshStats();
           setDeleteTarget(null);
           if (target.id === active.id) {
             goAfterDeletingActive(target.id);
@@ -226,11 +291,13 @@ export function ConversationsClient({
   // on id change, so we only need to sync when the sidebar list changes.
   useEffect(() => {
     setConversations(initialConversations);
-    // El server reentregó la primera página → reiniciamos el cursor del scroll
-    // infinito para que vuelva a paginar desde la 2 hacia abajo.
+    setStats(initialStats);
+    setFilter("todas");
+    // El server reentregó la primera página ("todas") → reiniciamos el cursor del
+    // scroll infinito para que vuelva a paginar desde la 2 hacia abajo.
     loadedPageRef.current = 1;
-    setHasMore(initialConversations.length < initialTotal);
-  }, [initialConversations, initialTotal]);
+    setHasMore(initialConversations.length < initialStats.total);
+  }, [initialConversations, initialStats]);
 
   const { connected } = useConversationStream(requestWsTicket, (event) => {
     if (event.type === "message.created") {
@@ -288,6 +355,7 @@ export function ConversationsClient({
           c.id === data.conversation_id ? { ...c, status: data.status } : c,
         ),
       );
+      void refreshStats();
       if (data.conversation_id === active.id) {
         setActive((prev) => ({ ...prev, status: data.status }));
       }
@@ -296,6 +364,7 @@ export function ConversationsClient({
       setConversations((prev) =>
         prev.filter((c) => c.id !== data.conversation_id),
       );
+      void refreshStats();
       // Si borraron la que estoy viendo (desde otra pestaña / otro admin),
       // salto directo a la siguiente conversación.
       if (data.conversation_id === active.id) {
@@ -318,28 +387,25 @@ export function ConversationsClient({
     );
   }, [conversations]);
 
-  const counts = useMemo(
-    () => ({
-      todas: conversations.length,
-      activas: conversations.filter((c) => c.status === "abierta").length,
-      escaladas: conversations.filter((c) => c.status === "takeover").length,
-    }),
-    [conversations],
-  );
+  // Contadores reales por estado (vienen del backend, no de lo cargado).
+  const counts = {
+    todas: stats.total,
+    activas: stats.abierta,
+    escaladas: stats.takeover,
+  };
 
+  // El estado ya lo filtra el servidor; aquí solo aplicamos la búsqueda por texto
+  // sobre lo que está cargado.
   const visibleConversations = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sortedConversations.filter((c) => {
-      if (filter === "activas" && c.status !== "abierta") return false;
-      if (filter === "escaladas" && c.status !== "takeover") return false;
-      if (!q) return true;
-      return (
+    if (!q) return sortedConversations;
+    return sortedConversations.filter(
+      (c) =>
         (c.display_name?.toLowerCase().includes(q) ?? false) ||
         c.student_phone.toLowerCase().includes(q) ||
-        (c.last_message_preview?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [sortedConversations, filter, query]);
+        (c.last_message_preview?.toLowerCase().includes(q) ?? false),
+    );
+  }, [sortedConversations, query]);
 
   const activeName =
     active.student_profile?.full_name ??
@@ -360,7 +426,12 @@ export function ConversationsClient({
   return (
     <div className="flex gap-4 min-w-0 h-[calc(100dvh-96px)]">
       {/* ── Columna 1 · Lista de conversaciones ───────────────────── */}
-      <aside className="w-[330px] shrink-0 min-h-0">
+      <aside
+        className={cn(
+          "w-full md:w-[330px] shrink-0 min-h-0 md:block",
+          mobileView === "list" ? "block" : "hidden",
+        )}
+      >
         <Card variant="flush" className="h-full flex flex-col">
           <header className="px-5 pt-5 pb-3 flex items-center justify-between">
             <h2 className="text-[19px] font-bold tracking-[-0.4px]">Mensajes</h2>
@@ -510,10 +581,24 @@ export function ConversationsClient({
       </aside>
 
       {/* ── Columna 2 · Hilo de chat ──────────────────────────────── */}
-      <section className="flex-1 min-w-0 min-h-0">
+      <section
+        className={cn(
+          "flex-1 min-w-0 min-h-0 md:block",
+          mobileView === "thread" ? "block" : "hidden",
+        )}
+      >
         <Card variant="flush" className="h-full flex flex-col">
-          <header className="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
+          <header className="px-4 sm:px-5 py-4 border-b border-line flex items-center justify-between gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {/* Volver a la lista (solo móvil, donde solo cabe un panel) */}
+              <button
+                type="button"
+                onClick={() => setMobileView("list")}
+                aria-label="Volver a la lista"
+                className="md:hidden shrink-0 -ml-1 w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-fg hover:bg-bg-2 transition-colors"
+              >
+                <ChevronLeft size={20} strokeWidth={2} />
+              </button>
               <Avatar
                 initials={initialsOf(
                   active.student_profile?.full_name ?? active.display_name,
@@ -536,15 +621,26 @@ export function ConversationsClient({
                 </div>
               </div>
             </div>
-            <ConversationActions
-              conversationId={active.id}
-              status={active.status}
-            />
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Abrir ficha del contacto como overlay (cuando no es panel fijo) */}
+              <button
+                type="button"
+                onClick={() => setContactOpen(true)}
+                aria-label="Ver ficha del contacto"
+                className="xl:hidden w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-fg hover:bg-bg-2 transition-colors"
+              >
+                <Info size={18} strokeWidth={2} />
+              </button>
+              <ConversationActions
+                conversationId={active.id}
+                status={active.status}
+              />
+            </div>
           </header>
 
           <div
             ref={threadRef}
-            className="flex-1 overflow-auto px-6 py-5 space-y-4 bg-bg"
+            className="flex-1 overflow-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 bg-bg"
           >
             {messages.length === 0 ? (
               <div className="text-center text-muted text-sm py-12">
@@ -566,7 +662,12 @@ export function ConversationsClient({
       </section>
 
       {/* ── Columna 3 · Ficha del contacto ────────────────────────── */}
-      <ContactPanel conversation={active} onChange={handleConversationChange} />
+      <ContactPanel
+        conversation={active}
+        onChange={handleConversationChange}
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+      />
 
       {deleteTarget && (
         <ConfirmDialog
@@ -713,7 +814,7 @@ function Bubble({
   if (isStudent) {
     return (
       <div className="group flex flex-col items-start gap-1">
-        <div className="flex max-w-[82%] items-center gap-1">
+        <div className="flex max-w-[88%] sm:max-w-[82%] items-center gap-1">
           <div className="min-w-0 rounded-2xl rounded-bl-md bg-surface border border-line text-fg px-4 py-3 shadow-sm">
             {msg.quoted && <QuotedPreview quoted={msg.quoted} />}
             <div className="whitespace-pre-wrap text-[13px] leading-relaxed">
@@ -731,7 +832,7 @@ function Bubble({
 
   return (
     <div className="group flex flex-col items-end gap-1">
-      <div className="flex max-w-[82%] items-center gap-1">
+      <div className="flex max-w-[88%] sm:max-w-[82%] items-center gap-1">
         <ReplyButton onClick={() => onReply(msg)} />
         <div
           className={cn(

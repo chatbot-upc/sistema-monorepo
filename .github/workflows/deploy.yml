@@ -1,11 +1,18 @@
-# CD — despliegue continuo a la EC2 frugal.
+# CD — despliegue continuo a las instancias corriendo (frugal y/o demo).
 # Se encadena a build-images: cuando ese workflow publica imagenes nuevas en
-# ghcr.io, este avisa a la EC2 que ya corre para que se actualice.
+# ghcr.io, este avisa a las instancias que ya corren para que se actualicen.
 #
 # Auth: GitHub OIDC -> rol IAM (ChatbotUpc-Cicd, output DeployRoleArn).
 #       Sin llaves estaticas; el rol solo lo asume la rama main de este repo.
-# Mecanica: SSM Run Command (sin abrir SSH). Si la EC2 esta apagada (rafaga de
-#           tear-down), el deploy se OMITE en verde, no falla.
+# Mecanica: SSM Run Command (sin abrir SSH). Si no hay ninguna instancia
+#           corriendo (rafaga de tear-down), el deploy se OMITE en verde.
+#
+# Dos arquitecturas posibles, pueden coexistir en la misma corrida (aunque en
+# la practica solo una esta activa a la vez, por el modelo de rafagas):
+#   - frugal: 1 sola EC2 con todo el compose (docker-compose.prod.yml).
+#   - demo:   3 ASG (nextjs/fastapi/celery), cada instancia etiquetada con
+#             Service=<rol>, contra RDS/ElastiCache externos
+#             (docker-compose.demo.yml, un profile por rol + profile "migrate").
 name: deploy
 
 on:
@@ -19,14 +26,15 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  SSM_ENV_PARAM: /chatbot-upc/frugal/env
+  FRUGAL_ENV_PARAM: /chatbot-upc/frugal/env
+  DEMO_ENV_PARAM: /chatbot-upc/demo/env
 
 jobs:
   deploy:
     # Solo si build-images termino OK.
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Configurar credenciales AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -34,38 +42,45 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Resolver instancia EC2 (por tag) o omitir si esta apagada
+      - name: Resolver instancias EC2 activas (por tag)
         id: target
         run: |
-          INSTANCE_ID=$(aws ec2 describe-instances \
+          INSTANCES_JSON=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Project,Values=chatbot-upc" \
-              "Name=tag:Mode,Values=frugal" \
               "Name=instance-state-name,Values=running" \
-            --query "Reservations[].Instances[].InstanceId | [0]" \
-            --output text)
-          if [ "$INSTANCE_ID" = "None" ] || [ -z "$INSTANCE_ID" ]; then
-            echo "No hay EC2 frugal corriendo (tear-down activo). Deploy omitido."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            --query "Reservations[].Instances[].{Id:InstanceId,Mode:Tags[?Key=='Mode']|[0].Value,Service:Tags[?Key=='Service']|[0].Value}" \
+            --output json)
+          echo "Instancias activas: $INSTANCES_JSON"
+
+          FRUGAL_ID=$(echo "$INSTANCES_JSON" | jq -r '[.[] | select(.Mode=="frugal")][0].Id // empty')
+          DEMO_INSTANCES=$(echo "$INSTANCES_JSON" | jq -c '[.[] | select(.Mode=="demo")]')
+
+          echo "frugal_id=$FRUGAL_ID" >> "$GITHUB_OUTPUT"
+          echo "demo_instances=$DEMO_INSTANCES" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$FRUGAL_ID" ] && [ "$DEMO_INSTANCES" = "[]" ]; then
+            echo "No hay ninguna EC2 corriendo (tear-down activo). Deploy omitido."
           else
-            echo "Instancia objetivo: $INSTANCE_ID"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+            echo "Objetivo: frugal_id=$FRUGAL_ID demo_instances=$DEMO_INSTANCES"
           fi
 
-      - name: Enviar comando de redeploy (SSM Run Command)
-        if: steps.target.outputs.skip == 'false'
-        id: send
+      # ---------------------------------------------------------------
+      # FRUGAL: 1 sola instancia con todo el compose.
+      # ---------------------------------------------------------------
+      - name: "[frugal] Enviar comando de redeploy (SSM Run Command)"
+        if: steps.target.outputs.frugal_id != ''
+        id: send_frugal
         run: |
           COMMAND_ID=$(aws ssm send-command \
             --document-name AWS-RunShellScript \
-            --instance-ids "${{ steps.target.outputs.instance_id }}" \
+            --instance-ids "${{ steps.target.outputs.frugal_id }}" \
             --comment "CD redeploy ${{ github.event.workflow_run.head_sha }}" \
             --parameters '{"commands":[
               "set -euo pipefail",
               "cd /opt/chatbot",
               "git pull --ff-only",
-              "aws ssm get-parameter --name ${{ env.SSM_ENV_PARAM }} --with-decryption --region ${{ env.AWS_REGION }} --query Parameter.Value --output text > .env",
+              "aws ssm get-parameter --name ${{ env.FRUGAL_ENV_PARAM }} --with-decryption --region ${{ env.AWS_REGION }} --query Parameter.Value --output text > .env",
               "docker compose -f docker-compose.prod.yml --env-file .env pull",
               "docker compose -f docker-compose.prod.yml --env-file .env up -d",
               "sleep 15",
@@ -75,11 +90,11 @@ jobs:
             --query "Command.CommandId" --output text)
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Esperar y verificar resultado
-        if: steps.target.outputs.skip == 'false'
+      - name: "[frugal] Esperar y verificar resultado"
+        if: steps.target.outputs.frugal_id != ''
         run: |
-          CMD="${{ steps.send.outputs.command_id }}"
-          INST="${{ steps.target.outputs.instance_id }}"
+          CMD="${{ steps.send_frugal.outputs.command_id }}"
+          INST="${{ steps.target.outputs.frugal_id }}"
           # Poll propio (no `wait command-executed`, que se rinde a los ~100s): el
           # `docker compose pull` de la imagen api es pesado, así que damos hasta
           # ~12 min.
@@ -98,6 +113,123 @@ jobs:
           aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query StandardErrorContent --output text
           echo "Status: $STATUS"
           if [ "$STATUS" != "Success" ]; then
-            echo "::error::El redeploy fallo en la EC2 (status=$STATUS)."
+            echo "::error::El redeploy fallo en la EC2 frugal (status=$STATUS)."
             exit 1
           fi
+
+      # ---------------------------------------------------------------
+      # DEMO: migracion unica (contra 1 instancia fastapi) y luego
+      # redeploy por instancia (cada una levanta solo su profile).
+      # ---------------------------------------------------------------
+      - name: "[demo] Migrar base de datos (una sola instancia fastapi)"
+        if: steps.target.outputs.demo_instances != '[]'
+        id: migrate_demo
+        run: |
+          DEMO_JSON='${{ steps.target.outputs.demo_instances }}'
+          FASTAPI_ID=$(echo "$DEMO_JSON" | jq -r '[.[] | select(.Service=="fastapi")][0].Id // empty')
+          if [ -z "$FASTAPI_ID" ]; then
+            echo "::error::Hay instancias demo pero ninguna con Service=fastapi; no se puede migrar."
+            exit 1
+          fi
+
+          PARAMS=$(jq -n --arg region "${{ env.AWS_REGION }}" --arg param "${{ env.DEMO_ENV_PARAM }}" '{commands: [
+            "set -euo pipefail",
+            "cd /opt/chatbot",
+            "git pull --ff-only",
+            ("aws ssm get-parameter --name " + $param + " --with-decryption --region " + $region + " --query Parameter.Value --output text > .env"),
+            "docker compose -f docker-compose.demo.yml --env-file .env pull migrate",
+            "docker compose -f docker-compose.demo.yml --env-file .env --profile migrate run --rm migrate"
+          ]}')
+
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --instance-ids "$FASTAPI_ID" \
+            --comment "CD migrate demo ${{ github.event.workflow_run.head_sha }}" \
+            --parameters "$PARAMS" \
+            --query "Command.CommandId" --output text)
+
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "instance_id=$FASTAPI_ID" >> "$GITHUB_OUTPUT"
+
+      - name: "[demo] Esperar y verificar migracion"
+        if: steps.target.outputs.demo_instances != '[]'
+        run: |
+          CMD="${{ steps.migrate_demo.outputs.command_id }}"
+          INST="${{ steps.migrate_demo.outputs.instance_id }}"
+          STATUS="Pending"
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query Status --output text 2>/dev/null || echo "Pending")
+            echo "intento $i: $STATUS"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+              *) sleep 10 ;;
+            esac
+          done
+          echo "===== STDOUT ====="
+          aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query StandardOutputContent --output text
+          echo "===== STDERR ====="
+          aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INST" --query StandardErrorContent --output text
+          echo "Status: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::La migracion fallo en $INST (status=$STATUS). Se detiene el redeploy de demo."
+            exit 1
+          fi
+
+      - name: "[demo] Redeploy por instancia (un profile por rol)"
+        if: steps.target.outputs.demo_instances != '[]'
+        run: |
+          echo '${{ steps.target.outputs.demo_instances }}' | jq -c '.[]' | while read -r inst; do
+            ID=$(echo "$inst" | jq -r '.Id')
+            SVC=$(echo "$inst" | jq -r '.Service')
+            echo "== Redeploy $ID (Service=$SVC) =="
+
+            case "$SVC" in
+              fastapi) HEALTH_CMD="curl -fsS http://localhost:8000/health" ;;
+              nextjs)  HEALTH_CMD="curl -fsS http://localhost:3000/" ;;
+              celery)  HEALTH_CMD="docker compose -f docker-compose.demo.yml --env-file .env ps --status running | grep -q worker" ;;
+              *) echo "::error::Instancia $ID con Service desconocido: '$SVC'"; exit 1 ;;
+            esac
+
+            PARAMS=$(jq -n \
+              --arg region "${{ env.AWS_REGION }}" \
+              --arg param "${{ env.DEMO_ENV_PARAM }}" \
+              --arg svc "$SVC" \
+              --arg health "$HEALTH_CMD" \
+              '{commands: [
+                "set -euo pipefail",
+                "cd /opt/chatbot",
+                "git pull --ff-only",
+                ("aws ssm get-parameter --name " + $param + " --with-decryption --region " + $region + " --query Parameter.Value --output text > .env"),
+                "docker compose -f docker-compose.demo.yml --env-file .env pull",
+                ("docker compose -f docker-compose.demo.yml --env-file .env --profile " + $svc + " up -d"),
+                "sleep 15",
+                $health,
+                "docker image prune -f"
+              ]}')
+
+            COMMAND_ID=$(aws ssm send-command \
+              --document-name AWS-RunShellScript \
+              --instance-ids "$ID" \
+              --comment "CD redeploy demo ${{ github.event.workflow_run.head_sha }} ($SVC)" \
+              --parameters "$PARAMS" \
+              --query "Command.CommandId" --output text)
+
+            STATUS="Pending"
+            for i in $(seq 1 72); do
+              STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$ID" --query Status --output text 2>/dev/null || echo "Pending")
+              echo "intento $i ($ID): $STATUS"
+              case "$STATUS" in
+                Success|Failed|Cancelled|TimedOut) break ;;
+                *) sleep 10 ;;
+              esac
+            done
+            echo "===== STDOUT ($ID / $SVC) ====="
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$ID" --query StandardOutputContent --output text
+            echo "===== STDERR ($ID / $SVC) ====="
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$ID" --query StandardErrorContent --output text
+            echo "Status ($ID / $SVC): $STATUS"
+            if [ "$STATUS" != "Success" ]; then
+              echo "::error::El redeploy fallo en $ID (Service=$SVC, status=$STATUS)."
+              exit 1
+            fi
+          done

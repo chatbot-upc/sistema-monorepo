@@ -8,11 +8,14 @@ Celery corre como worker (sin ALB) y escala segun la profundidad de la cola SQS.
 Plan de continuidad: cada ASG reparte instancias en 2 AZ y reemplaza solas las
 que fallen; el ALB hace health checks y saca de rotacion las instancias enfermas.
 
-Nota: el user-data deja Docker instalado como punto de arranque. El despliegue
-real de los contenedores (imagenes de apps/web y apps/api) se hace via CI/CD o
-docker compose; aqui se modela la INFRA, no el build de las apps.
+Cada ASG se etiqueta con ``Service=nextjs|fastapi|celery`` (se propaga a las
+instancias). El user-data es el mismo para los 3 ASG: instala Docker+Compose+AWS
+CLI, clona el repo, baja el ``.env`` de SSM y resuelve en tiempo de arranque su
+propio rol leyendo ese tag, para levantar solo el perfil de
+``docker-compose.demo.yml`` que le corresponde (ver docs/superpowers/specs/
+2026-07-03-demo-deploy-completion-design.md).
 """
-from aws_cdk import Stack, CfnOutput, Duration
+from aws_cdk import Stack, CfnOutput, Duration, Tags
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_autoscaling as autoscaling
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
@@ -23,6 +26,9 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 from .config import InfraConfig
+
+REPO_URL = "https://github.com/chatbot-upc/sistema-monorepo.git"
+SSM_ENV_PARAM = "/chatbot-upc/demo/env"   # SecureString con el contenido del .env de demo
 
 
 class ComputeStack(Stack):
@@ -57,17 +63,59 @@ class ComputeStack(Stack):
         queue.grant_send_messages(app_role)
         docs_bucket.grant_read_write(app_role)
         db_secret.grant_read(app_role)
+        # Leer el .env de demo desde SSM
+        app_role.add_to_policy(iam.PolicyStatement(
+            actions=["ssm:GetParameter"],
+            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{SSM_ENV_PARAM}"],
+        ))
+        # Resolver el propio rol (Service) leyendo el tag de la instancia en boot
+        app_role.add_to_policy(iam.PolicyStatement(
+            actions=["ec2:DescribeTags"],
+            resources=["*"],  # DescribeTags no admite restriccion a nivel de recurso
+        ))
 
         # AMI ARM (Graviton) — debe coincidir con instancias t4g del config
         ami = ec2.MachineImage.latest_amazon_linux2023(
             cpu_type=ec2.AmazonLinuxCpuType.ARM_64
         )
+        # user-data comun a los 3 ASG: instala Docker+Compose+AWS CLI, clona el
+        # repo, baja el .env de SSM y resuelve su propio Service (tag) en tiempo
+        # de arranque para levantar solo ese perfil de docker-compose.demo.yml.
         user_data = ec2.UserData.for_linux()
         user_data.add_commands(
+            "set -xe",
             "dnf update -y",
-            "dnf install -y docker",
+            "dnf install -y docker git unzip",
             "systemctl enable --now docker",
             "usermod -aG docker ec2-user",
+            # AWS CLI v2 (ARM) para leer tags/SSM
+            'curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip',
+            "unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install",
+            # Docker Compose v2 como plugin (binario aarch64)
+            "mkdir -p /usr/local/lib/docker/cli-plugins",
+            'curl -sSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" '
+            "-o /usr/local/lib/docker/cli-plugins/docker-compose",
+            "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
+            # Codigo (repo publico) — idempotente: clona si no existe, si no actualiza
+            "mkdir -p /opt/chatbot",
+            f"if [ ! -d /opt/chatbot/.git ]; then git clone --depth 1 {REPO_URL} /opt/chatbot; "
+            "else git -C /opt/chatbot pull --ff-only || true; fi",
+            "cd /opt/chatbot",
+            # Bajar el .env desde SSM (SecureString); el operador lo crea una vez
+            f'aws ssm get-parameter --name "{SSM_ENV_PARAM}" --with-decryption '
+            f'--region {self.region} --query Parameter.Value --output text > /opt/chatbot/.env || '
+            'echo "WARN: falta el parametro SSM con el .env; crearlo y reiniciar docker compose"',
+            # Resolver el propio rol (Service) via IMDSv2 + tag de la instancia
+            'TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" '
+            '-H "X-aws-ec2-metadata-token-ttl-seconds: 21600")',
+            'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" '
+            'http://169.254.169.254/latest/meta-data/instance-id)',
+            f'SERVICE=$(aws ec2 describe-tags --region {self.region} '
+            '--filters "Name=resource-id,Values=$INSTANCE_ID" "Name=key,Values=Service" '
+            '--query "Tags[0].Value" --output text)',
+            # Levantar solo el perfil que le corresponde (imagenes ARM desde ghcr.io)
+            "docker compose -f docker-compose.demo.yml --env-file .env pull || true",
+            'docker compose -f docker-compose.demo.yml --env-file .env --profile "$SERVICE" up -d',
         )
 
         def make_asg(name: str, port: int) -> autoscaling.AutoScalingGroup:
@@ -104,6 +152,12 @@ class ComputeStack(Stack):
             max_capacity=cfg.asg_max,
             desired_capacity=cfg.asg_desired,
         )
+
+        # Tag Service (propagado a las instancias): el user-data lo lee en boot
+        # para saber que perfil de docker-compose.demo.yml levantar.
+        Tags.of(self.nextjs_asg).add("Service", "nextjs")
+        Tags.of(self.fastapi_asg).add("Service", "fastapi")
+        Tags.of(self.celery_asg).add("Service", "celery")
         # Celery escala segun cuantos mensajes esperan en la cola (continuidad de proceso)
         self.celery_asg.scale_on_metric(
             "ScaleOnQueueDepth",

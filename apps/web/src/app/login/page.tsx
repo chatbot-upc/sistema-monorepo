@@ -41,7 +41,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-2 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-bg-2 flex items-center justify-center p-4 sm:p-6">
       <div className="flex flex-col items-center gap-6 w-full max-w-[440px]">
         {/* Logo */}
         <div className="flex items-center gap-3 mb-2">
@@ -54,8 +54,8 @@ function LoginForm() {
           </div>
         </div>
 
-        <Card className="w-full p-12 flex flex-col gap-7" variant="flush">
-          <div className="flex flex-col gap-2 px-12 pt-12 pb-0">
+        <Card className="w-full p-4 sm:p-12 flex flex-col gap-7" variant="flush">
+          <div className="flex flex-col gap-2 px-4 sm:px-12 pt-6 sm:pt-12 pb-0">
             <h1 className="text-[32px] font-bold tracking-[-1px] leading-tight">
               Bienvenido
             </h1>
@@ -64,7 +64,7 @@ function LoginForm() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-12">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 sm:px-12">
             <Field label="Email institucional">
               <Input
                 type="email"
@@ -104,7 +104,7 @@ function LoginForm() {
             </div>
           </form>
 
-          <div className="px-12 pb-12 text-center">
+          <div className="px-4 sm:px-12 pb-6 sm:pb-12 text-center">
             <Link
               href="/dashboard"
               className="text-xs font-mono text-muted-2 hover:text-muted"

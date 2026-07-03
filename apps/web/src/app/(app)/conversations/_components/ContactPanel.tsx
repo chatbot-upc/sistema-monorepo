@@ -91,9 +91,17 @@ const COLOR_KEYS = Object.keys(TAG_SWATCHES) as TagColor[];
 interface Props {
   conversation: ConversationDetail;
   onChange: (c: ConversationDetail) => void;
+  // En <xl la ficha es un overlay controlado por el hilo; en xl+ es panel fijo.
+  open?: boolean;
+  onClose?: () => void;
 }
 
-export function ContactPanel({ conversation, onChange }: Props) {
+export function ContactPanel({
+  conversation,
+  onChange,
+  open = false,
+  onClose,
+}: Props) {
   const { toast } = useToast();
   const id = conversation.id;
   const profile = conversation.student_profile;
@@ -131,9 +139,8 @@ export function ContactPanel({ conversation, onChange }: Props) {
     });
   };
 
-  return (
-    <aside className="w-[300px] shrink-0 min-h-0">
-      <div className="bg-surface rounded-3xl h-full overflow-auto">
+  const content = (
+    <div className="bg-surface rounded-3xl h-full overflow-auto">
         {/* Cabecera */}
         <div className="p-6 flex flex-col items-center text-center border-b border-line relative">
           <button
@@ -243,7 +250,47 @@ export function ContactPanel({ conversation, onChange }: Props) {
           </div>
         </section>
       </div>
-    </aside>
+  );
+
+  return (
+    <>
+      {/* Desktop (xl+): tercera columna fija */}
+      <aside className="hidden xl:block w-[300px] shrink-0 min-h-0">
+        {content}
+      </aside>
+
+      {/* <xl: overlay deslizante desde la derecha, abierto desde el hilo */}
+      <div
+        className={cn(
+          "xl:hidden fixed inset-0 z-overlay transition-opacity duration-200",
+          open ? "opacity-100" : "opacity-0 pointer-events-none",
+        )}
+        aria-hidden={!open}
+      >
+        <div
+          className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+          onClick={onClose}
+        />
+        <aside
+          className={cn(
+            "absolute right-0 top-0 h-full w-[340px] max-w-[88vw] p-2 transition-transform duration-200",
+            open ? "translate-x-0" : "translate-x-full",
+          )}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar ficha"
+            className="absolute left-4 top-4 z-10 w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors"
+          >
+            <X size={18} strokeWidth={2} />
+          </button>
+          {content}
+        </aside>
+      </div>
+    </>
   );
 }
 

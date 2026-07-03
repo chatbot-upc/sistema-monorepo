@@ -17,6 +17,7 @@ from chatbot_api.schemas.conversation import (
     ConversationDetail,
     ConversationHistory,
     ConversationListItem,
+    ConversationStats,
     SendMessageResponse,
 )
 from chatbot_api.schemas.message import MessageRead
@@ -71,6 +72,16 @@ async def list_paginated(
         page=pagination.page,
         size=pagination.size,
         pages=ceil(total / pagination.size) if total else 0,
+    )
+
+
+async def get_stats(db: AsyncSession) -> ConversationStats:
+    counts = await conversation_repository.count_by_status(db)
+    return ConversationStats(
+        total=sum(counts.values()),
+        abierta=counts.get(ConversationStatus.abierta, 0),
+        cerrada=counts.get(ConversationStatus.cerrada, 0),
+        takeover=counts.get(ConversationStatus.takeover, 0),
     )
 
 

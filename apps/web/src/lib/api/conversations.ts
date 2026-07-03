@@ -106,6 +106,13 @@ export interface Page<T> {
   pages: number;
 }
 
+export interface ConversationStats {
+  total: number;
+  abierta: number;
+  cerrada: number;
+  takeover: number;
+}
+
 export interface FetchConversationsParams {
   status?: ConversationStatus;
   phone?: string;
@@ -124,6 +131,10 @@ export async function fetchConversations(
       size: params.size ?? 20,
     },
   });
+}
+
+export async function fetchConversationStats(): Promise<ConversationStats> {
+  return apiFetch<ConversationStats>("/api/v1/conversations/stats");
 }
 
 export async function fetchConversation(

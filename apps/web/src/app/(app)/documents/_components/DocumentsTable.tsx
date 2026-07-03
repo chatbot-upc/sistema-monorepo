@@ -42,22 +42,28 @@ interface DocumentsTableProps {
 export function DocumentsTable({ rows, onDelete }: DocumentsTableProps) {
   return (
     <Card variant="flush">
-      <div className="grid grid-cols-[1fr_110px_100px_140px_140px_60px] gap-4 px-6 py-4 bg-surface-2 font-mono text-[10px] uppercase tracking-[0.6px] text-muted font-semibold">
-        <span>Nombre</span>
-        <span>Fuente</span>
-        <span>Chunks</span>
-        <span>Estado</span>
-        <span>Indexado</span>
-        <span></span>
-      </div>
-      {rows.length === 0 && (
-        <div className="px-6 py-16 text-center text-sm text-muted border-t border-line">
-          Ningún documento coincide con los filtros.
+      {/* Scroll horizontal en móvil: la tabla mantiene su grid de columnas fijas
+          (≈680px) y se desliza en vez de aplastarse en pantallas estrechas. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[680px]">
+          <div className="grid grid-cols-[1fr_110px_100px_140px_140px_60px] gap-4 px-6 py-4 bg-surface-2 font-mono text-[10px] uppercase tracking-[0.6px] text-muted font-semibold">
+            <span>Nombre</span>
+            <span>Fuente</span>
+            <span>Chunks</span>
+            <span>Estado</span>
+            <span>Indexado</span>
+            <span></span>
+          </div>
+          {rows.length === 0 && (
+            <div className="px-6 py-16 text-center text-sm text-muted border-t border-line">
+              Ningún documento coincide con los filtros.
+            </div>
+          )}
+          {rows.map((d) => (
+            <DocumentRow key={d.id} doc={d} onDelete={() => onDelete(d)} />
+          ))}
         </div>
-      )}
-      {rows.map((d) => (
-        <DocumentRow key={d.id} doc={d} onDelete={() => onDelete(d)} />
-      ))}
+      </div>
     </Card>
   );
 }

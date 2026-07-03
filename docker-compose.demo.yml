@@ -1,0 +1,64 @@
+# Compose de PRODUCCION para el perfil demo (arquitectura objetivo HA:
+# ALB + ASG por servicio, RDS Multi-AZ, ElastiCache con replica).
+#
+# A diferencia de docker-compose.prod.yml (frugal), aqui NO hay postgres/redis/
+# caddy locales: cada instancia del ASG corre UN SOLO servicio, contra RDS/
+# ElastiCache externos, seleccionado por --profile (el user-data de
+# infra/cdk/stacks/compute_stack.py resuelve el profile por el tag `Service`
+# de la propia instancia).
+#
+# Uso en cada instancia (lo hace el user-data del ComputeStack):
+#   docker compose -f docker-compose.demo.yml --env-file .env --profile "$SERVICE" up -d
+#
+# Variables en .env (vienen de SSM /chatbot-upc/demo/env):
+#   DATABASE_URL (RDS + credenciales de Secrets Manager), REDIS_URL (ElastiCache)
+#   AWS_S3_BUCKET, SQS_QUEUE_URL, COGNITO_*, OPENAI_*, META_*, IMAGE_TAG (default latest)
+#
+# Las migraciones viven en un profile aparte ("migrate"), que NUNCA se activa
+# en el arranque normal (--profile fastapi/celery/nextjs). Se dispara aparte,
+# una sola vez, contra una unica instancia fastapi (ver seccion 3 del spec):
+#   docker compose -f docker-compose.demo.yml --env-file .env --profile migrate run --rm migrate
+
+services:
+  # One-shot: crea/actualiza el esquema (alembic) y siembra el admin del CRM.
+  migrate:
+    profiles: ["migrate"]
+    image: ghcr.io/chatbot-upc/chatbot-api:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m chatbot_api.scripts.bootstrap_admin"
+
+  api:
+    profiles: ["fastapi"]
+    image: ghcr.io/chatbot-upc/chatbot-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    profiles: ["celery"]
+    image: ghcr.io/chatbot-upc/chatbot-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    command: celery -A chatbot_api.core.celery_app worker --pool=solo --loglevel=info
+    # Comparte imagen con api, que hornea un HEALTHCHECK a :8000; el worker no
+    # sirve HTTP, asi que se desactiva el heredado (no es un servicio HTTP).
+    healthcheck:
+      disable: true
+
+  web:
+    profiles: ["nextjs"]
+    image: ghcr.io/chatbot-upc/chatbot-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3000:3000"

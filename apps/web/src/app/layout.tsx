@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/ToastProvider";
@@ -18,6 +18,14 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "UPCBot · Panel de matrícula",
   description: "Panel administrativo del chatbot de matrícula UPC",
+};
+
+// Sin esto, los navegadores móviles renderizan a ~980px y hacen zoom-out:
+// rompe todo el responsive. device-width es el cimiento de lo demás.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

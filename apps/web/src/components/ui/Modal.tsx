@@ -158,6 +158,10 @@ function ModalRoot({
           data-state={animState}
           className={cn(
             "relative bg-surface rounded-3xl shadow-modal w-full p-6 outline-none focus:outline-none focus-visible:outline-none",
+            // Tope de altura: en pantallas bajas (móvil landscape, modales largos
+            // como el editor de prompts) el contenido scrollea en vez de desbordar
+            // el viewport y dejar inalcanzable el botón de cerrar.
+            "max-h-[calc(100dvh-2rem)] overflow-y-auto",
             sizeMap[size],
             className
           )}

@@ -49,7 +49,7 @@ export function ToastItem({
       onMouseLeave={() => onResume(toast.id)}
       className={cn(
         "bg-surface rounded-2xl shadow-overlay border border-line",
-        "px-4 py-3 min-w-[320px] max-w-[420px]",
+        "px-4 py-3 w-full sm:w-auto sm:min-w-[320px] max-w-[420px]",
         "flex items-start gap-3 pointer-events-auto"
       )}
     >
