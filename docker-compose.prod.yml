@@ -62,6 +62,11 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # Compartido con worker: si AWS_S3_BUCKET esta vacio, el storage cae a
+    # filesystem local (LOCAL_UPLOADS_DIR=./uploads, WORKDIR /app) y ambos
+    # contenedores necesitan ver los mismos archivos.
+    volumes:
+      - uploads_data:/app/uploads
     expose:
       - "8000"
     healthcheck:
@@ -81,6 +86,10 @@ services:
     # aunque esté vivo. Se desactiva el heredado (no es un servicio HTTP).
     healthcheck:
       disable: true
+    # Mismo volumen que api: ambos deben ver los mismos archivos cuando el
+    # storage cae a filesystem local (sin AWS_S3_BUCKET).
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,3 +131,4 @@ volumes:
   redis_data:
   caddy_data:
   caddy_config:
+  uploads_data:
