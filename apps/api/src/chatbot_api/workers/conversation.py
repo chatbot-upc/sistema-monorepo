@@ -29,8 +29,7 @@ from chatbot_api.models import ConversationIntent
 from chatbot_api.models.enums import ConversationStatus, MessageRole
 from chatbot_api.repositories.conversation import conversation_repository
 from chatbot_api.repositories.message import build_quoted_snapshot, message_repository
-from chatbot_api.repositories.student import student_repository
-from chatbot_api.schemas.whatsapp import ParsedInboundMessage
+from chatbot_api.schemas.whatsapp import ParsedIdentityChange, ParsedInboundMessage
 from chatbot_api.services import (
     billing_service,
     conversation_history_service,
@@ -38,6 +37,7 @@ from chatbot_api.services import (
     push_service,
     rag_service,
     student_profile_service,
+    whatsapp_identity_service,
     whatsapp_service,
 )
 
@@ -77,7 +77,7 @@ async def _send_escalation_side_effects(
     db: Any,
     *,
     conv_id: int,
-    student_phone: str,
+    student_phone: str | None,
     inbound_id: int,
     inbound_text: str,
     reason: str,
@@ -96,8 +96,8 @@ async def _send_escalation_side_effects(
     if notify_student:
         notice = _get_escalation_notice()
         try:
-            meta_id = await whatsapp_service.send_message(
-                to=student_phone, body=notice
+            meta_id = await whatsapp_identity_service.send_for_conversation(
+                db, conversation_id=conv_id, body=notice
             )
         except Exception:
             log.exception(
@@ -124,12 +124,12 @@ async def _send_escalation_side_effects(
         push_body = inbound_text[:_PUSH_BODY_LIMIT]
         sent = await push_service.notify_all_admins(
             db,
-            title=f"🔔 Derivada · {student_phone}",
+            title=f"🔔 Derivada · {student_phone or 'Contacto de WhatsApp'}",
             body=push_body,
             data={
                 "type": "escalation",
                 "conversation_id": str(conv_id),
-                "student_phone": student_phone,
+                "student_phone": student_phone or "",
                 "message_id": str(inbound_id),
                 "reason": reason,
                 "source": source,
@@ -215,7 +215,7 @@ async def _run_reply(
     db: Any,
     *,
     conversation_id: int,
-    phone: str,
+    phone: str | None,
     batch_ids: list[int],
     correlation_id: str,
 ) -> None:
@@ -257,8 +257,10 @@ async def _run_reply(
     )
 
     # SW-48/SW-46: perfil académico + carrera para personalizar y scopear el RAG.
-    profile_context, program = await student_profile_service.get_profile_scope(
-        db, phone
+    contact = await whatsapp_identity_service.conversation_contact(db, conversation_id)
+    phone = contact.phone_e164  # queued phone arguments are compatibility-only
+    profile_context, program = (
+        await student_profile_service.get_profile_scope(db, phone) if phone else (None, None)
     )
 
     # Texto del turno para el agente. Si hubo varios mensajes, los numeramos y le
@@ -295,9 +297,7 @@ async def _run_reply(
     # "Escribiendo…" mientras corre el RAG (se descarta al enviar la respuesta o
     # a los ~25s). Lo anclamos al último mensaje del lote. Best-effort.
     if batch[-1].meta_message_id:
-        await whatsapp_service.mark_read(
-            message_id=batch[-1].meta_message_id, typing=True
-        )
+        await whatsapp_service.mark_read(message_id=batch[-1].meta_message_id, typing=True)
 
     started = time.perf_counter()
     result = await rag_service.answer(
@@ -348,8 +348,16 @@ async def _run_reply(
         in_reply_to_id = quote_target.id
         quoted_snapshot = build_quoted_snapshot(quote_target)
 
-    meta_out_id = await whatsapp_service.send_message(
-        to=phone, body=answer_text, context=reply_context
+    contact = await whatsapp_identity_service.conversation_contact(db, conversation_id)
+    if contact.phone_e164 != phone:
+        # An academic association changed while RAG ran; discard its stale answer.
+        return
+    meta_out_id = await whatsapp_identity_service.send_for_conversation(
+        db,
+        conversation_id=conversation_id,
+        body=answer_text,
+        context=reply_context,
+        academic_phone=phone,
     )
 
     bot_msg = await message_repository.create_bot(
@@ -424,7 +432,7 @@ async def _run_reply(
 
 
 async def _generate_reply_async(
-    conversation_id: int, phone: str, token: str, correlation_id: str
+    conversation_id: int, phone: str | None, token: str, correlation_id: str
 ) -> None:
     """Entry de la ruta debounced: si el token vence, drena el lote y responde."""
     ids = await _drain_pending_if_current(conversation_id, token)
@@ -464,24 +472,12 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
 
     async with factory() as db:
         try:
-            _, student_created = await student_repository.upsert_by_phone(
-                db,
-                phone_e164=parsed.from_phone,
-                display_name=parsed.display_name,
-            )
+            student, student_created = await whatsapp_identity_service.resolve_inbound(db, parsed)
             (
                 conv,
                 conv_created,
                 conv_reopened,
-            ) = await conversation_repository.get_or_create_open(
-                db, parsed.from_phone
-            )
-            if conv_created:
-                # Conv brand-new: limpiar cualquier cache stale de una posible
-                # encarnación previa con el mismo id (DB reset, etc.) para
-                # evitar contaminar el contexto del RAG.
-                await conversation_history_service.clear(conv.id)
-
+            ) = await conversation_repository.get_or_create_open_for_student(db, student.id)
             # Cita/reply entrante: si el estudiante citó un mensaje nuestro, Meta
             # manda context.id (= wamid). Lo resolvemos a nuestro id interno y
             # congelamos el snapshot. `original` se reutiliza abajo para darle al
@@ -490,10 +486,8 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
             quoted_snap: dict[str, object] | None = None
             original = None
             if parsed.context_wamid:
-                original = await message_repository.get_by_meta_id(
-                    db, parsed.context_wamid
-                )
-                if original is not None:
+                original = await message_repository.get_by_meta_id(db, parsed.context_wamid)
+                if original is not None and original.conversation_id == conv.id:
                     in_reply_to_id = original.id
                     quoted_snap = build_quoted_snapshot(original)
 
@@ -514,9 +508,10 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 )
                 return
             await db.commit()
-            await publish_event(
-                "message.created", message_to_event_payload(inbound)
-            )
+            if conv_created:
+                # Clear reused-ID cache only after releasing identity DB locks.
+                await conversation_history_service.clear(conv.id)
+            await publish_event("message.created", message_to_event_payload(inbound))
             # Acuse de lectura (✓✓ azul) al instante, sin esperar la ventana de
             # debounce. Best-effort: no rompe el flujo si Meta falla.
             await whatsapp_service.mark_read(message_id=parsed.meta_message_id)
@@ -536,9 +531,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 student_created=student_created,
             )
 
-            intent_result = await intent_classifier_service.classify(
-                db=db, text=parsed.text
-            )
+            intent_result = await intent_classifier_service.classify(db=db, text=parsed.text)
             inbound.intent_used_fallback = bool(intent_result["used_fallback"])
             if intent_result["intent_id"] is not None:
                 inbound.intent_id = intent_result["intent_id"]
@@ -624,11 +617,13 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
             # BD, sin riesgo de que el LLM reformule o alucine cifras. Mismo patrón
             # que la rama `solicita_humano`.
             if intent_result.get("intent_name") == "consulta_pagos":
+                contact = await whatsapp_identity_service.conversation_contact(db, conv.id)
+                academic_phone = contact.phone_e164
                 reply_text = await billing_service.build_payment_reply(
-                    db, phone_e164=parsed.from_phone
+                    db, phone_e164=academic_phone
                 )
-                payment_meta_id = await whatsapp_service.send_message(
-                    to=parsed.from_phone, body=reply_text
+                payment_meta_id = await whatsapp_identity_service.send_for_conversation(
+                    db, conversation_id=conv.id, body=reply_text, academic_phone=academic_phone
                 )
                 payment_msg = await message_repository.create_bot(
                     db,
@@ -637,9 +632,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                     meta_message_id=payment_meta_id,
                 )
                 await db.commit()
-                await publish_event(
-                    "message.created", message_to_event_payload(payment_msg)
-                )
+                await publish_event("message.created", message_to_event_payload(payment_msg))
                 log.info(
                     "payment_reply_sent",
                     correlation_id=correlation_id,
@@ -650,8 +643,8 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
 
             if student_created:
                 welcome_text = _get_welcome_text()
-                welcome_meta_id = await whatsapp_service.send_message(
-                    to=parsed.from_phone, body=welcome_text
+                welcome_meta_id = await whatsapp_identity_service.send_for_conversation(
+                    db, conversation_id=conv.id, body=welcome_text
                 )
                 welcome_msg = await message_repository.create_bot(
                     db,
@@ -662,9 +655,7 @@ async def _process_async(parsed_dict: dict[str, Any], correlation_id: str) -> No
                 await db.commit()
                 # Welcome NO entra al cache: es scaffolding (saludo canned),
                 # no aporta contexto útil al RAG en turnos futuros.
-                await publish_event(
-                    "message.created", message_to_event_payload(welcome_msg)
-                )
+                await publish_event("message.created", message_to_event_payload(welcome_msg))
                 log.info(
                     "welcome_sent",
                     correlation_id=correlation_id,
@@ -744,11 +735,22 @@ def process_incoming_message(
 def generate_reply(
     self: Any,
     conversation_id: int,
-    phone: str,
+    phone: str | None,
     token: str,
     correlation_id: str,
 ) -> None:
     """Task debounced: responde al lote consolidado si su token sigue vigente."""
-    asyncio.run(
-        _generate_reply_async(conversation_id, phone, token, correlation_id)
-    )
+    asyncio.run(_generate_reply_async(conversation_id, phone, token, correlation_id))
+
+
+async def _process_identity_change_async(parsed_dict: dict[str, Any], correlation_id: str) -> None:
+    event = ParsedIdentityChange.model_validate(parsed_dict)
+    factory = _make_session_factory()
+    async with factory() as db:
+        await whatsapp_identity_service.apply_identity_change(db, event)
+        await db.commit()
+
+
+@celery_app.task(name="process_identity_change")  # type: ignore[untyped-decorator]
+def process_identity_change(parsed: dict[str, Any], correlation_id: str) -> None:
+    asyncio.run(_process_identity_change_async(parsed, correlation_id))

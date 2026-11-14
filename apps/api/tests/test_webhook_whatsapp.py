@@ -89,9 +89,7 @@ def _stub_intent_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
             "sbert_confidence": 0.0,
         }
     )
-    monkeypatch.setattr(
-        "chatbot_api.workers.conversation.intent_classifier_service.classify", stub
-    )
+    monkeypatch.setattr("chatbot_api.workers.conversation.intent_classifier_service.classify", stub)
 
 
 @pytest.fixture
@@ -217,9 +215,7 @@ async def test_worker_idempotent_on_duplicate_meta_id(
     fake_send = AsyncMock(return_value="wamid.bot.dup")
     with (
         patch("chatbot_api.workers.conversation.rag_service.answer", fake_answer),
-        patch(
-            "chatbot_api.workers.conversation.whatsapp_service.send_message", fake_send
-        ),
+        patch("chatbot_api.workers.conversation.whatsapp_service.send_message", fake_send),
     ):
         await _process_async(parsed, "corr-1")
         await _process_async(parsed, "corr-2")
@@ -228,16 +224,72 @@ async def test_worker_idempotent_on_duplicate_meta_id(
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as verify:
         msg_count = (
-            await verify.execute(
-                select(Message).where(Message.meta_message_id == "wamid.dup.1")
-            )
-        ).scalars().all()
+            (await verify.execute(select(Message).where(Message.meta_message_id == "wamid.dup.1")))
+            .scalars()
+            .all()
+        )
         students = (
-            await verify.execute(
-                select(Student).where(Student.phone_e164 == "+51900000050")
-            )
-        ).scalars().all()
+            (await verify.execute(select(Student).where(Student.phone_e164 == "+51900000050")))
+            .scalars()
+            .all()
+        )
     await engine.dispose()
 
     assert len(msg_count) == 1
     assert len(students) == 1
+
+
+async def test_system_events_dispatch_separately(client, patched_dispatch, monkeypatch):
+    payload = _sample_payload()
+    value = payload["entry"][0]["changes"][0]["value"]
+    value["messages"].append(
+        {
+            "id": "wamid.rotation",
+            "timestamp": "1700000001",
+            "type": "system",
+            "system": {
+                "type": "user_changed_user_id",
+                "user_id": "new-opaque",
+                "previous_user_id": "old-opaque",
+            },
+        }
+    )
+    dispatch = MagicMock()
+    monkeypatch.setattr(webhook_module, "process_identity_change", dispatch)
+    body = json.dumps(payload).encode()
+    resp = await client.post(
+        "/api/webhooks/whatsapp", content=body, headers={"X-Hub-Signature-256": _sign(body)}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["queued"] == 1
+    patched_dispatch.delay.assert_called_once()
+    dispatch.delay.assert_called_once()
+    assert dispatch.delay.call_args.args[0]["user_id"] == "new-opaque"
+
+
+async def test_extraction_validates_both_groups_before_any_dispatch(
+    client, patched_dispatch, monkeypatch
+):
+    monkeypatch.setenv("META_BUSINESS_PORTFOLIO_ID", "")
+    monkeypatch.setenv("META_PHONE_NUMBER_ID", "")
+    get_settings.cache_clear()
+    payload = _sample_payload()
+    value = payload["entry"][0]["changes"][0]["value"]
+    value.pop("metadata")
+    value["messages"].append(
+        {
+            "id": "wamid.no-scope",
+            "timestamp": "1700000001",
+            "type": "system",
+            "system": {"type": "user_changed_user_id", "user_id": "new-opaque"},
+        }
+    )
+    dispatch = MagicMock()
+    monkeypatch.setattr(webhook_module, "process_identity_change", dispatch)
+    body = json.dumps(payload).encode()
+    resp = await client.post(
+        "/api/webhooks/whatsapp", content=body, headers={"X-Hub-Signature-256": _sign(body)}
+    )
+    assert resp.status_code == 400
+    patched_dispatch.delay.assert_not_called()
+    dispatch.delay.assert_not_called()

@@ -13,11 +13,12 @@ from chatbot_api.core.settings import get_settings
 from chatbot_api.repositories.message import message_repository
 from chatbot_api.schemas.whatsapp import WhatsAppWebhookPayload
 from chatbot_api.services.whatsapp_webhook_service import (
+    extract_identity_changes,
     extract_messages,
     extract_statuses,
     verify_signature,
 )
-from chatbot_api.workers.conversation import process_incoming_message
+from chatbot_api.workers.conversation import process_identity_change, process_incoming_message
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 log = structlog.get_logger()
@@ -59,18 +60,20 @@ async def whatsapp_event(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid signature")
     elif settings.env != "local":
         log.error("whatsapp_app_secret_missing", env=settings.env)
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "meta_app_secret not configured"
-        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "meta_app_secret not configured")
 
     try:
         payload = WhatsAppWebhookPayload.model_validate_json(raw_body)
-    except ValidationError as exc:
-        log.warning("whatsapp_invalid_payload", errors=exc.errors())
+        messages = extract_messages(payload)
+        identity_changes = extract_identity_changes(payload)
+    except (ValidationError, ValueError) as exc:
+        log.warning("whatsapp_invalid_payload", error=str(exc))
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid payload") from exc
 
-    messages = extract_messages(payload)
     correlation_id = x_correlation_id or uuid4().hex
+
+    for change in identity_changes:
+        process_identity_change.delay(change.model_dump(), correlation_id)
 
     queued = 0
     for parsed in messages:
@@ -82,9 +85,7 @@ async def whatsapp_event(
     # emite un evento por cada cambio para que el CRM repinte los checks en vivo.
     status_updates = 0
     for st in extract_statuses(payload):
-        msg = await message_repository.update_delivery_status(
-            db, st.meta_message_id, st.status
-        )
+        msg = await message_repository.update_delivery_status(db, st.meta_message_id, st.status)
         if msg is not None:
             status_updates += 1
             await publish_event(

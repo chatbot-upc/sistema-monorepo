@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.models import (
@@ -52,10 +53,13 @@ async def make_conversation(
     status: ConversationStatus = ConversationStatus.abierta,
     opened_at: datetime | None = None,
 ) -> Conversation:
+    student = await db.scalar(select(Student).where(Student.phone_e164 == student_phone))
+    assert student is not None
     conv = Conversation(
+        student_id=student.id,
         student_phone=student_phone,
         status=status,
-        opened_at=opened_at or datetime.now()
+        opened_at=opened_at or datetime.now(),
     )
     db.add(conv)
     await db.flush()
@@ -75,7 +79,7 @@ async def make_message(
         role=role,
         content=content,
         retrieved_chunks=[],
-        created_at=datetime.now()
+        created_at=datetime.now(),
     )
     db.add(msg)
     await db.flush()
