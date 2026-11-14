@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { LinkIconButton } from "@/components/ui/LinkIconButton";
 import { Avatar } from "@/components/ui/Avatar";
+import { contactDisplayName, contactInitials } from "@/lib/contact-display";
 import { MiniBars } from "@/components/charts/MiniBars";
 import { BigBars } from "@/components/charts/BigBars";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -50,14 +51,6 @@ function padToWindow(rows: { date: string; count: number }[], len: number): numb
     out.push(byDate.get(isoDaysAgo(i)) ?? 0);
   }
   return out;
-}
-
-function initialsOf(name: string | null, phone: string): string {
-  if (name) {
-    const parts = name.trim().split(/\s+/);
-    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-  }
-  return phone.slice(-2);
 }
 
 export default async function DashboardPage() {
@@ -235,7 +228,7 @@ export default async function DashboardPage() {
               {escalatedQueue.items.map((c, i) => (
                 <Avatar
                   key={c.id}
-                  initials={initialsOf(c.display_name, c.student_phone)}
+                  initials={contactInitials(c)}
                   gradient={AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length]}
                   size="md"
                   className="!w-9 !h-9 !text-xs"
@@ -250,8 +243,8 @@ export default async function DashboardPage() {
                 key={c.id}
                 className="flex items-center justify-between text-[13px]"
               >
-                <span className="font-medium truncate">
-                  {c.display_name ?? c.student_phone}
+                <span className="font-medium truncate" title={contactDisplayName(c)}>
+                  {contactDisplayName(c)}
                 </span>
                 <span className="font-mono text-[11px] text-muted">
                   {c.message_count} msg

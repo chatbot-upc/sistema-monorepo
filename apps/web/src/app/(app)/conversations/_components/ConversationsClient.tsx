@@ -29,6 +29,11 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
+import {
+  contactDisplayName,
+  contactIdentityLabel,
+  contactInitials,
+} from "@/lib/contact-display";
 import { IconButton } from "@/components/ui/IconButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -94,15 +99,6 @@ const GRADIENTS = ["coral", "blue", "violet", "mint", "amber", "rose"] as const;
 
 function gradientOf(id: number): (typeof GRADIENTS)[number] {
   return GRADIENTS[id % GRADIENTS.length];
-}
-
-function initialsOf(name: string | null, phone: string): string {
-  const src = name?.trim();
-  if (src) {
-    const parts = src.split(/\s+/);
-    return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
-  }
-  return phone.replace(/\D/g, "").slice(-2);
 }
 
 // Picks which conversation to open after the active one is deleted: the most
@@ -402,15 +398,15 @@ export function ConversationsClient({
     return sortedConversations.filter(
       (c) =>
         (c.display_name?.toLowerCase().includes(q) ?? false) ||
-        c.student_phone.toLowerCase().includes(q) ||
+        (c.student_phone?.toLowerCase().includes(q) ?? false) ||
+        (c.whatsapp_user_id?.toLowerCase().includes(q) ?? false) ||
+        (c.whatsapp_username?.toLowerCase().includes(q) ?? false) ||
+        contactIdentityLabel(c).toLowerCase().includes(q) ||
         (c.last_message_preview?.toLowerCase().includes(q) ?? false),
     );
   }, [sortedConversations, query]);
 
-  const activeName =
-    active.student_profile?.full_name ??
-    active.display_name ??
-    active.student_phone;
+  const activeName = contactDisplayName(active, active.student_profile?.full_name);
 
   // Las mutaciones de la ficha (destacar/correo/etiquetas) devuelven el detalle
   // actualizado; sincronizamos el panel y, para `starred`, también la lista.
@@ -519,14 +515,17 @@ export function ConversationsClient({
                       )}
                     >
                       <Avatar
-                        initials={initialsOf(c.display_name, c.student_phone)}
+                        initials={contactInitials(c)}
                         gradient={gradientOf(c.id)}
                         size="md"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[13.5px] font-semibold truncate">
-                            {c.display_name ?? c.student_phone}
+                          <span
+                            className="text-[13.5px] font-semibold truncate"
+                            title={contactDisplayName(c)}
+                          >
+                            {contactDisplayName(c)}
                           </span>
                           <span className="shrink-0 flex items-center gap-1 text-[11px] text-muted font-mono">
                             {c.starred && (
@@ -600,23 +599,26 @@ export function ConversationsClient({
                 <ChevronLeft size={20} strokeWidth={2} />
               </button>
               <Avatar
-                initials={initialsOf(
-                  active.student_profile?.full_name ?? active.display_name,
-                  active.student_phone,
-                )}
+                initials={contactInitials(active, active.student_profile?.full_name)}
                 gradient={gradientOf(active.id)}
                 size="md"
               />
               <div className="min-w-0">
-                <div className="text-[15px] font-bold tracking-[-0.3px] truncate">
+                <div
+                  className="text-[15px] font-bold tracking-[-0.3px] truncate"
+                  title={activeName}
+                >
                   {activeName}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <Pill tone={STATUS_TONE[active.status]}>
                     {STATUS_LABEL[active.status]}
                   </Pill>
-                  <span className="text-[11px] text-muted font-mono">
-                    {active.student_phone}
+                  <span
+                    className="text-[11px] text-muted font-mono min-w-0 truncate"
+                    title={contactIdentityLabel(active)}
+                  >
+                    {contactIdentityLabel(active)}
                   </span>
                 </div>
               </div>
@@ -675,7 +677,7 @@ export function ConversationsClient({
           onOpenChange={(v) => !v && setDeleteTarget(null)}
           title="Eliminar conversación"
           description={`Se borrará la conversación con ${
-            deleteTarget.display_name ?? deleteTarget.student_phone
+            contactDisplayName(deleteTarget)
           } y todos sus mensajes de forma permanente. Esta acción no se puede deshacer.`}
           confirmLabel="Eliminar"
           variant="destructive"
