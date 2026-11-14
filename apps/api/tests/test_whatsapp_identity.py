@@ -107,7 +107,7 @@ async def test_rotations_replay_old_alias_and_phone_confirmation(db_session):
     assert student.phone_e164 == "+51900008103"
     newer = rotation(old="opaque-B", new="opaque-C", timestamp=400)
     await identities.apply_identity_change(db_session, newer)
-    assert not await identities.apply_identity_change(
+    await identities.apply_identity_change(
         db_session,
         event.model_copy(update={"meta_message_id": "replayed-other-id", "timestamp": "500"}),
     )
@@ -454,3 +454,228 @@ async def test_persisted_foreign_sender_cannot_send_after_configuration_change(
             db_session, conversation_id=conv.id, body="Must not cross senders"
         )
     send.assert_not_awaited()
+
+
+async def test_delayed_number_change_after_hidden_text_invalidates_old_phone(db_session):
+    student, _ = await identities.resolve_inbound(db_session, inbound(phone="+51900008201"))
+    conv, _, _ = await conversation_repository.get_or_create_open_for_student(
+        db_session, student.id
+    )
+    await identities.resolve_inbound(db_session, inbound(timestamp=300))
+    assert student.phone_e164 == "+51900008201" and student.phone_timestamp == 100
+    assert await identities.apply_identity_change(
+        db_session,
+        rotation(
+            new="opaque-A",
+            timestamp=200,
+            kind="user_changed_number",
+            from_phone="+51900008201",
+            new_wa_id="opaque-route",
+        ),
+    )
+    assert student.phone_e164 is None and conv.student_phone is None
+    assert student.phone_timestamp == 200
+    assert (await conversation_service.get_detail(db_session, conv.id)).student_profile is None
+
+
+async def test_later_actual_phone_survives_delayed_number_change(db_session):
+    student, _ = await identities.resolve_inbound(db_session, inbound(phone="+51900008202"))
+    await identities.resolve_inbound(db_session, inbound(timestamp=400))
+    # This actual observation arrives after newer hidden text, but establishes
+    # ownership after the delayed number change at t200.
+    await identities.resolve_inbound(db_session, inbound(phone="+51900008203", timestamp=300))
+    assert student.phone_timestamp == 300
+    await identities.apply_identity_change(
+        db_session,
+        rotation(
+            new="opaque-A",
+            timestamp=200,
+            kind="user_changed_number",
+            from_phone="+51900008202",
+            new_wa_id="older-route",
+        ),
+    )
+    assert student.phone_e164 == "+51900008203" and student.whatsapp_routing_id is None
+    assert student.phone_timestamp == 300
+
+
+async def test_later_bsuid_rotation_does_not_suppress_old_phone_invalidation(db_session):
+    student, _ = await identities.resolve_inbound(db_session, inbound(phone="+51900008204"))
+    conv, _, _ = await conversation_repository.get_or_create_open_for_student(
+        db_session, student.id
+    )
+    await identities.apply_identity_change(db_session, rotation(timestamp=300))
+    assert student.identity_timestamp == 300
+    assert await identities.apply_identity_change(
+        db_session,
+        rotation(
+            new="opaque-A",
+            timestamp=200,
+            kind="user_changed_number",
+            from_phone="+51900008204",
+            new_wa_id="older-route",
+        ),
+    )
+    assert student.phone_e164 is None and student.identity_timestamp == 300
+    assert await identities.current_recipient(db_session, conv.id) == {"recipient": "opaque-B"}
+
+
+def test_identity_task_late_ack_and_worker_loss_configuration():
+    task = worker.process_identity_change
+    assert task.acks_late is True
+    assert task.reject_on_worker_lost is True
+    assert task.acks_on_failure_or_timeout is True
+    assert task.max_retries == 5
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "operational",
+        "disconnected",
+        "pool_timeout",
+        "connection",
+        "conflict",
+        "validation",
+        "integrity",
+    ],
+)
+def test_identity_task_transient_retry_and_permanent_failure(monkeypatch, kind):
+    from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
+    from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+
+    errors = {
+        "operational": OperationalError("synthetic", {}, Exception("unavailable")),
+        "disconnected": DBAPIError(
+            "synthetic", {}, Exception("disconnected"), connection_invalidated=True
+        ),
+        "pool_timeout": PoolTimeoutError("synthetic pool timeout"),
+        "connection": ConnectionError("synthetic connection failure"),
+        "conflict": identities.IdentityConflictError("synthetic conflicting aliases"),
+        "validation": ValueError("synthetic invalid event"),
+        "integrity": IntegrityError("synthetic", {}, Exception("constraint failure")),
+    }
+    process = AsyncMock(side_effect=[errors[kind], None])
+    monkeypatch.setattr(worker, "_process_identity_change_async", process)
+    result = worker.process_identity_change.apply(
+        args=(rotation().model_dump(), "retry-test"), throw=False
+    )
+    transient = kind in {"operational", "disconnected", "pool_timeout", "connection"}
+    assert result.successful() is transient
+    assert process.await_count == (2 if transient else 1)
+
+
+def test_identity_task_transient_retries_are_bounded(monkeypatch):
+    process = AsyncMock(side_effect=ConnectionError("synthetic database unavailable"))
+    monkeypatch.setattr(worker, "_process_identity_change_async", process)
+    result = worker.process_identity_change.apply(
+        args=(rotation().model_dump(), "bounded-retry"), throw=False
+    )
+    assert result.failed()
+    assert process.await_count == 6  # initial attempt + five retries
+
+
+async def test_identity_failure_before_commit_rolls_back_then_replay_commits_once(
+    postgres_url, monkeypatch
+):
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from chatbot_api.models import WhatsAppIdentityEvent
+
+    engine = create_async_engine(postgres_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    unique = uuid4().hex
+    phone = "+519" + str(int(unique[:10], 16))
+    parsed = inbound(user=unique, phone=phone)
+    event = rotation(
+        old=unique,
+        new=unique + "-new",
+        kind="user_changed_number",
+        from_phone=phone,
+        new_wa_id="opaque-route",
+    )
+    async with factory() as db:
+        student, _ = await identities.resolve_inbound(db, parsed)
+        student_id = student.id
+        await db.commit()
+    remaining_failures = 1
+
+    class FailBeforeCommit(AsyncSession):
+        async def commit(self):
+            nonlocal remaining_failures
+            if remaining_failures:
+                remaining_failures -= 1
+                raise OperationalError("synthetic commit", {}, Exception("connection lost"))
+            await super().commit()
+
+    failing_factory = async_sessionmaker(engine, class_=FailBeforeCommit, expire_on_commit=False)
+    monkeypatch.setattr(worker, "_make_session_factory", lambda: failing_factory)
+    try:
+        with pytest.raises(OperationalError):
+            await worker._process_identity_change_async(event.model_dump(), "first-attempt")
+        async with factory() as db:
+            unchanged = await db.get(Student, student_id)
+            assert unchanged.phone_e164 == phone and unchanged.whatsapp_user_id == unique
+            assert (
+                await db.scalar(
+                    select(WhatsAppIdentityEvent.id).where(
+                        WhatsAppIdentityEvent.meta_message_id == event.meta_message_id
+                    )
+                )
+                is None
+            )
+        await worker._process_identity_change_async(event.model_dump(), "retry")
+        await worker._process_identity_change_async(event.model_dump(), "redelivered-after-commit")
+        async with factory() as db:
+            changed = await db.get(Student, student_id)
+            assert changed.phone_e164 is None and changed.whatsapp_user_id == unique + "-new"
+            events = (
+                await db.scalars(
+                    select(WhatsAppIdentityEvent).where(
+                        WhatsAppIdentityEvent.meta_message_id == event.meta_message_id
+                    )
+                )
+            ).all()
+            aliases = (
+                await db.scalars(
+                    select(WhatsAppIdentity).where(WhatsAppIdentity.student_id == student_id)
+                )
+            ).all()
+            assert len(events) == 1 and len(aliases) == 2
+    finally:
+        async with factory() as db:
+            await db.execute(
+                WhatsAppIdentityEvent.__table__.delete().where(
+                    WhatsAppIdentityEvent.meta_message_id == event.meta_message_id
+                )
+            )
+            await db.execute(
+                WhatsAppIdentity.__table__.delete().where(WhatsAppIdentity.student_id == student_id)
+            )
+            await db.execute(Student.__table__.delete().where(Student.id == student_id))
+            await db.commit()
+        await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "sqlstate, expected",
+    [
+        ("08006", True),
+        ("40001", True),
+        ("40P01", True),
+        ("57P03", True),
+        ("23505", False),
+        ("42601", False),
+    ],
+)
+def test_identity_transient_postgres_sqlstates(sqlstate, expected):
+    from sqlalchemy.exc import DBAPIError
+
+    class PostgreSQLError(Exception):
+        pass
+
+    original = PostgreSQLError("synthetic PostgreSQL response")
+    original.sqlstate = sqlstate
+    assert worker._transient_identity_failure(original) is expected
+    assert worker._transient_identity_failure(DBAPIError("synthetic", {}, original)) is expected

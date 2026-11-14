@@ -17,6 +17,7 @@ class Student(Base):
     business_phone_number_id: Mapped[str | None] = mapped_column(String(160))
     whatsapp_routing_id: Mapped[str | None] = mapped_column(String(160))
     identity_timestamp: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    phone_timestamp: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)

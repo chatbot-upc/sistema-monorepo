@@ -49,6 +49,10 @@ def upgrade() -> None:
         "students",
         sa.Column("identity_timestamp", sa.BigInteger(), nullable=False, server_default="0"),
     )
+    op.add_column(
+        "students",
+        sa.Column("phone_timestamp", sa.BigInteger(), nullable=False, server_default="0"),
+    )
     op.create_table(
         "whatsapp_identities",
         sa.Column("id", sa.BigInteger(), primary_key=True),
@@ -99,6 +103,7 @@ def downgrade() -> None:
         "business_phone_number_id",
         "whatsapp_routing_id",
         "identity_timestamp",
+        "phone_timestamp",
     ]:
         op.drop_column("students", name)
     op.drop_constraint("pk_students", "students", type_="primary")

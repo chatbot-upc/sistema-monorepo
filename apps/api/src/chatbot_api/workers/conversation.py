@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from sqlalchemy.exc import DBAPIError, DisconnectionError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from chatbot_api.core.celery_app import celery_app
@@ -751,6 +753,51 @@ async def _process_identity_change_async(parsed_dict: dict[str, Any], correlatio
         await db.commit()
 
 
-@celery_app.task(name="process_identity_change")  # type: ignore[untyped-decorator]
-def process_identity_change(parsed: dict[str, Any], correlation_id: str) -> None:
-    asyncio.run(_process_identity_change_async(parsed, correlation_id))
+def _transient_identity_failure(exc: Exception) -> bool:
+    # asyncpg can surface server restart/serialization errors as generic
+    # DBAPIError (or raw connection-setup errors), rather than OperationalError.
+    original = getattr(exc, "orig", exc)
+    sqlstate = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    if isinstance(sqlstate, str) and (
+        sqlstate.startswith("08")
+        or sqlstate in {"40001", "40P01", "53300", "57P01", "57P02", "57P03"}
+    ):
+        return True
+    return isinstance(
+        exc,
+        (
+            OperationalError,
+            InterfaceError,
+            DisconnectionError,
+            SQLAlchemyTimeoutError,
+            ConnectionError,
+            TimeoutError,
+        ),
+    ) or (isinstance(exc, DBAPIError) and exc.connection_invalidated)
+
+
+@celery_app.task(  # type: ignore[untyped-decorator]
+    name="process_identity_change",
+    bind=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    acks_on_failure_or_timeout=True,
+    max_retries=5,
+    default_retry_delay=5,
+)
+def process_identity_change(self: Any, parsed: dict[str, Any], correlation_id: str) -> None:
+    try:
+        asyncio.run(_process_identity_change_async(parsed, correlation_id))
+    except whatsapp_identity_service.IdentityConflictError:
+        # Permanent ambiguity stays failed for operator inspection; replaying it
+        # automatically cannot establish authority to merge contacts.
+        log.error(
+            "identity_change_conflict",
+            meta_message_id=parsed.get("meta_message_id"),
+            correlation_id=correlation_id,
+        )
+        raise
+    except Exception as exc:
+        if not _transient_identity_failure(exc):
+            raise
+        raise self.retry(exc=exc, countdown=min(5 * (2**self.request.retries), 60)) from exc

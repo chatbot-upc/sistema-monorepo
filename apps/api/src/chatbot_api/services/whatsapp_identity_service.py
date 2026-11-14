@@ -92,6 +92,7 @@ async def resolve_inbound(db: AsyncSession, parsed: ParsedInboundMessage) -> tup
             db.add(alias)
             student.whatsapp_user_id = parsed.from_user_id
             student.whatsapp_scope = scope
+            student.identity_timestamp = ts
     validate_sender(student.business_phone_number_id)
     if (
         student.business_phone_number_id
@@ -101,10 +102,13 @@ async def resolve_inbound(db: AsyncSession, parsed: ParsedInboundMessage) -> tup
         raise IdentityConflictError("Contact belongs to another business sender")
     # Retired aliases and delayed pre-rotation messages may contribute history only.
     current = not parsed.from_user_id or parsed.from_user_id == student.whatsapp_user_id
-    if current and (created or ts > student.identity_timestamp):
-        if parsed.from_phone:
+    if current:
+        if parsed.from_phone and ts > student.phone_timestamp:
             conflict = phone_owner is not None and phone_owner.id != student.id
             await _set_phone(db, student, None if conflict else parsed.from_phone)
+            student.phone_timestamp = ts
+            # Actual observations supersede opaque legacy number routes.
+            student.whatsapp_routing_id = None
         if parsed.username:
             student.whatsapp_username = parsed.username
             if alias:
@@ -115,10 +119,6 @@ async def resolve_inbound(db: AsyncSession, parsed: ParsedInboundMessage) -> tup
             student.business_phone_number_id = parsed.business_phone_number_id
         if not student.whatsapp_scope:
             student.whatsapp_scope = scope
-        student.identity_timestamp = ts
-        # An actual phone observation supersedes the opaque legacy number route.
-        if parsed.from_phone:
-            student.whatsapp_routing_id = None
     student.last_seen_at = datetime.now()
     if parsed.display_name and not student.display_name:
         student.display_name = parsed.display_name
@@ -184,13 +184,20 @@ async def apply_identity_change(db: AsyncSession, event: ParsedIdentityChange) -
             scope=event_scope, meta_message_id=event.meta_message_id, timestamp=ts
         )
     )
-    # Strictly newer changes only: duplicates with different wamids cannot roll
-    # back a chain; retired predecessors cannot branch the current destination.
+    # Phone ownership has its own clock: hidden text or a later BSUID rotation
+    # cannot cancel an unseen earlier number change. Only a later actual phone
+    # observation (or invalidation) can supersede this invalidation.
+    phone_invalidated = event.system_type == "user_changed_number" and ts >= student.phone_timestamp
+    if phone_invalidated:
+        await _set_phone(db, student, None)
+        student.phone_timestamp = ts
+    # Destination chronology is independent; retired predecessors cannot branch
+    # the current destination, even if their phone invalidation still applied.
     if ts < student.identity_timestamp or (
         old and student.whatsapp_user_id not in (event.previous_user_id, event.user_id)
     ):
         await db.flush()
-        return False
+        return phone_invalidated
     for user_id, parent in [
         (event.previous_user_id, event.previous_parent_user_id),
         (event.user_id, event.parent_user_id),
@@ -211,8 +218,7 @@ async def apply_identity_change(db: AsyncSession, event: ParsedIdentityChange) -
     student.whatsapp_scope = scope
     if event.business_phone_number_id:
         student.business_phone_number_id = event.business_phone_number_id
-    if event.system_type == "user_changed_number":
-        await _set_phone(db, student, None)
+    if phone_invalidated:
         student.whatsapp_routing_id = event.new_wa_id
     student.identity_timestamp = ts
     await db.flush()
