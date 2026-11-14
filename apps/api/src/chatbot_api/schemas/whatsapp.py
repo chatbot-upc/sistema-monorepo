@@ -172,7 +172,7 @@ class ParsedIdentityChange(BaseModel):
     user_id: str | None = None
     previous_user_id: str | None = None
     from_phone: str | None = None
-    new_phone: str | None = None
+    new_wa_id: str | None = None  # Routing metadata; never a confirmed actual phone.
     parent_user_id: str | None = None
     previous_parent_user_id: str | None = None
 

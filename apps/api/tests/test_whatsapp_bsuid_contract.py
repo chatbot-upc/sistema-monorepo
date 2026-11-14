@@ -126,7 +126,11 @@ def test_conflicting_or_unmatched_contacts_never_supply_metadata() -> None:
                     "user_id": "PE.other",
                     "profile": {"name": "Wrong", "username": "wrong"},
                 },
-                {"wa_id": "51900000002", "user_id": OPAQUE_ID, "profile": {"name": "Also wrong"}},
+                {
+                    "wa_id": "51900000002",
+                    "user_id": "PE.unrelated",
+                    "profile": {"name": "Also wrong"},
+                },
             ],
         )
     )[0]
@@ -134,6 +138,64 @@ def test_conflicting_or_unmatched_contacts_never_supply_metadata() -> None:
     assert parsed.from_user_id == OPAQUE_ID
     assert parsed.display_name is None
     assert parsed.username is None
+
+
+def test_exact_bsuid_match_wins_when_contact_wa_id_differs_from_actual_phone() -> None:
+    parsed = extract_messages(
+        payload(
+            [text(**{"from": "51900000001", "from_user_id": OPAQUE_ID})],
+            [
+                {"wa_id": "51900000001", "profile": {"name": "Phone fallback"}},
+                {
+                    "wa_id": "51900000001",
+                    "user_id": "PE.other",
+                    "profile": {"name": "Wrong", "username": "wrong"},
+                },
+                {
+                    "wa_id": "opaque.whatsapp.routing.id",
+                    "user_id": OPAQUE_ID,
+                    "parent_user_id": "PE.ENT.Parent",
+                    "profile": {"name": "Correct", "username": "correct"},
+                },
+            ],
+        )
+    )[0]
+    assert parsed.from_phone == "+51900000001"
+    assert parsed.from_user_id == OPAQUE_ID
+    assert parsed.display_name == "Correct"
+    assert parsed.username == "correct"
+    assert parsed.from_parent_user_id == "PE.ENT.Parent"
+
+
+def test_bsuid_contact_wa_id_never_supplies_actual_phone() -> None:
+    parsed = extract_messages(
+        payload(
+            [text(from_user_id=OPAQUE_ID)],
+            [
+                {
+                    "wa_id": "opaque.whatsapp.routing.id",
+                    "user_id": OPAQUE_ID,
+                    "profile": {"name": "Correct"},
+                }
+            ],
+        )
+    )[0]
+    assert parsed.from_phone is None
+    assert parsed.display_name == "Correct"
+
+
+def test_ambiguous_bsuid_contacts_do_not_fall_back_to_phone_metadata() -> None:
+    parsed = extract_messages(
+        payload(
+            [text(**{"from": "51900000001", "from_user_id": OPAQUE_ID})],
+            [
+                {"user_id": OPAQUE_ID, "profile": {"name": "First"}},
+                {"user_id": OPAQUE_ID, "profile": {"name": "Duplicate"}},
+                {"wa_id": "51900000001", "profile": {"name": "Phone fallback"}},
+            ],
+        )
+    )[0]
+    assert parsed.display_name is None
 
 
 def test_shared_vcard_does_not_link_phone() -> None:
@@ -224,7 +286,7 @@ def test_rotation_can_have_identity_only_inside_system(event_type: str) -> None:
     }
     if event_type == "user_changed_number":
         message["from"] = "51900000001"
-        system["wa_id"] = "51900000002"
+        system["wa_id"] = "opaque.whatsapp.routing.id.Aa00"
     event = payload([message])
     assert extract_messages(event) == []
     change = extract_identity_changes(event)[0]
@@ -235,7 +297,8 @@ def test_rotation_can_have_identity_only_inside_system(event_type: str) -> None:
     assert change.previous_parent_user_id == "PE.ENT.Old"
     assert change.identity_scope == "portfolio:PORTFOLIO"
     assert change.business_phone_number_id == "SENDER"
-    assert change.new_phone == ("+51900000002" if "from" in message else None)
+    assert change.new_wa_id == ("opaque.whatsapp.routing.id.Aa00" if "from" in message else None)
+    assert "new_phone" not in change.model_dump()
     assert change.from_phone == ("+51900000001" if "from" in message else None)
 
 
@@ -269,7 +332,9 @@ def test_phone_only_rotation_and_optional_previous_ids_remain_valid() -> None:
     change = extract_identity_changes(event)[0]
     assert change.user_id is None
     assert change.previous_user_id is None
-    assert change.new_phone == "+51900000002"
+    assert change.new_wa_id == "51900000002"
+    assert change.from_phone == "+51900000001"
+    assert "new_phone" not in change.model_dump()
 
 
 def test_unknown_system_type_does_not_become_text_or_block_other_text() -> None:

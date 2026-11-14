@@ -58,21 +58,21 @@ def _matching_contact(
     msg: WhatsAppMessage, contacts: list[WhatsAppContact]
 ) -> WhatsAppContact | None:
     """Match identifiers, never array position, names, or nested shared vCards."""
-    matches = []
+    user_matches = []
+    phone_matches = []
     for contact in contacts:
-        phone_matches = bool(
+        if msg.from_user_id and contact.user_id and msg.from_user_id != contact.user_id:
+            continue
+        if msg.from_user_id and msg.from_user_id == contact.user_id:
+            # Meta's contact wa_id can differ from the actual message phone.
+            user_matches.append(contact)
+        elif (
             msg.from_phone
             and contact.wa_id
             and _normalize_phone(msg.from_phone) == _normalize_phone(contact.wa_id)
-        )
-        user_matches = bool(msg.from_user_id and msg.from_user_id == contact.user_id)
-        if not (phone_matches or user_matches):
-            continue
-        if msg.from_user_id and contact.user_id and msg.from_user_id != contact.user_id:
-            continue
-        if msg.from_phone and contact.wa_id and not phone_matches:
-            continue
-        matches.append(contact)
+        ):
+            phone_matches.append(contact)
+    matches = user_matches or phone_matches
     return matches[0] if len(matches) == 1 else None
 
 
@@ -152,7 +152,7 @@ def extract_identity_changes(payload: WhatsAppWebhookPayload) -> list[ParsedIden
                         user_id=system.user_id,
                         previous_user_id=system.previous_user_id,
                         from_phone=_normalize_phone(msg.from_phone) if msg.from_phone else None,
-                        new_phone=_normalize_phone(system.wa_id) if system.wa_id else None,
+                        new_wa_id=system.wa_id,
                         parent_user_id=system.parent_user_id,
                         previous_parent_user_id=system.previous_parent_user_id,
                     )
