@@ -72,10 +72,10 @@ class BillingSummary:
     all_paid: bool
 
 
-async def get_summary(
-    db: AsyncSession, *, phone_e164: str
-) -> BillingSummary | None:
+async def get_summary(db: AsyncSession, *, phone_e164: str | None) -> BillingSummary | None:
     """Agrega la facturación del estudiante. None si no tiene registros."""
+    if not phone_e164:
+        return None
     rows = await student_billing_repository.list_by_phone(db, phone_e164)
     if not rows:
         return None
@@ -101,18 +101,14 @@ def render_reply(summary: BillingSummary) -> str:
 
     if summary.all_paid:
         return (
-            f"✅ ¡Estás al día! No tienes cuotas pendientes de pago{cycle_suffix}.\n\n"
-            f"{_DISCLAIMER}"
+            f"✅ ¡Estás al día! No tienes cuotas pendientes de pago{cycle_suffix}.\n\n{_DISCLAIMER}"
         )
 
     lines: list[str] = [f"💳 *Estado de tus pagos*{cycle_suffix}", ""]
 
     n = len(summary.pending)
     plural = "cuota pendiente" if n == 1 else "cuotas pendientes"
-    lines.append(
-        f"Tienes *{n} {plural}* por un total de "
-        f"*{_fmt_money(summary.total_pending)}*."
-    )
+    lines.append(f"Tienes *{n} {plural}* por un total de *{_fmt_money(summary.total_pending)}*.")
 
     if summary.next_installment is not None:
         ni = summary.next_installment
@@ -128,8 +124,7 @@ def render_reply(summary: BillingSummary) -> str:
         esta = "está" if ov == 1 else "están"
         lines += [
             "",
-            f"⚠️ {ov} de tus cuotas ya {esta} {vencidas}. Regulariza tu pago "
-            "para evitar recargos.",
+            f"⚠️ {ov} de tus cuotas ya {esta} {vencidas}. Regulariza tu pago para evitar recargos.",
         ]
 
     today = _today_local()
@@ -145,7 +140,7 @@ def render_reply(summary: BillingSummary) -> str:
     return "\n".join(lines)
 
 
-async def build_payment_reply(db: AsyncSession, *, phone_e164: str) -> str:
+async def build_payment_reply(db: AsyncSession, *, phone_e164: str | None) -> str:
     """Texto de respuesta a una consulta de pagos. Nunca lanza; siempre devuelve
     un mensaje presentable (mensaje canned si el estudiante no tiene registros)."""
     summary = await get_summary(db, phone_e164=phone_e164)

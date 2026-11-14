@@ -24,7 +24,10 @@ class ConversationListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    student_phone: str
+    student_id: int
+    student_phone: str | None
+    whatsapp_user_id: str | None = None
+    whatsapp_username: str | None = None
     display_name: str | None
     status: ConversationStatus
     opened_at: datetime
@@ -38,7 +41,10 @@ class ConversationDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    student_phone: str
+    student_id: int
+    student_phone: str | None
+    whatsapp_user_id: str | None = None
+    whatsapp_username: str | None = None
     display_name: str | None = None
     email: str | None = None
     status: ConversationStatus

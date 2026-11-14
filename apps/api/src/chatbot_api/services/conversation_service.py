@@ -23,7 +23,7 @@ from chatbot_api.schemas.conversation import (
 from chatbot_api.schemas.message import MessageRead
 from chatbot_api.schemas.pagination import Page, PageParams
 from chatbot_api.schemas.student_profile import StudentProfileRead
-from chatbot_api.services import conversation_history_service, whatsapp_service
+from chatbot_api.services import conversation_history_service, whatsapp_identity_service
 
 log = structlog.get_logger()
 
@@ -53,9 +53,11 @@ async def list_paginated(
     items = [
         ConversationListItem(
             id=conv.id,
-            student_phone=conv.student_phone,
-            display_name=profile_name
-            or (conv.student.display_name if conv.student else None),
+            student_id=conv.student_id,
+            student_phone=conv.student.phone_e164,
+            whatsapp_user_id=conv.student.whatsapp_user_id,
+            whatsapp_username=conv.student.whatsapp_username,
+            display_name=profile_name or (conv.student.display_name if conv.student else None),
             status=conv.status,
             opened_at=conv.opened_at,
             closed_at=conv.closed_at,
@@ -92,7 +94,14 @@ async def get_detail(db: AsyncSession, conversation_id: int) -> ConversationDeta
     detail = ConversationDetail.model_validate(conv)
     detail.display_name = conv.student.display_name if conv.student else None
     detail.email = conv.student.email if conv.student else None
-    profile = await student_profile_repository.get_by_phone(db, conv.student_phone)
+    detail.student_phone = conv.student.phone_e164
+    detail.whatsapp_user_id = conv.student.whatsapp_user_id
+    detail.whatsapp_username = conv.student.whatsapp_username
+    profile = (
+        await student_profile_repository.get_by_phone(db, conv.student.phone_e164)
+        if conv.student.phone_e164
+        else None
+    )
     if profile is not None:
         detail.student_profile = StudentProfileRead.model_validate(profile)
     return detail
@@ -117,16 +126,12 @@ async def update_contact(
     return await get_detail(db, conversation_id)
 
 
-async def get_history(
-    db: AsyncSession, conversation_id: int
-) -> ConversationHistory:
+async def get_history(db: AsyncSession, conversation_id: int) -> ConversationHistory:
     conv = await _get_or_404(db, conversation_id)
-    phone = conv.student_phone
+    student_id = conv.student_id
     return ConversationHistory(
-        total_conversations=await conversation_repository.count_by_phone(db, phone),
-        total_messages=await conversation_repository.count_messages_by_phone(
-            db, phone
-        ),
+        total_conversations=await conversation_repository.count_by_student(db, student_id),
+        total_messages=await conversation_repository.count_messages_by_student(db, student_id),
         first_contact=conv.student.first_seen_at if conv.student else None,
     )
 
@@ -198,15 +203,13 @@ async def send_admin_message(
     if in_reply_to_id is not None:
         original = await message_repository.get(db, in_reply_to_id)
         if original is None or original.conversation_id != conv.id:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT, "mensaje citado inválido"
-            )
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "mensaje citado inválido")
         quoted_snap = build_quoted_snapshot(original)
         if original.meta_message_id:
             context = {"message_id": original.meta_message_id}
 
-    meta_id = await whatsapp_service.send_message(
-        to=conv.student_phone, body=body, context=context
+    meta_id = await whatsapp_identity_service.send_for_conversation(
+        db, conversation_id=conv.id, body=body, context=context
     )
     msg = await message_repository.create_admin_message(
         db,
@@ -226,16 +229,12 @@ async def send_admin_message(
     await db.commit()
     await db.refresh(msg)
 
-    await conversation_history_service.append(
-        conversation_id=conv.id, messages=[msg]
-    )
+    await conversation_history_service.append(conversation_id=conv.id, messages=[msg])
     await publish_event("message.created", message_to_event_payload(msg))
     if auto_takeover:
         await publish_event(
             "conversation.status_changed",
-            _conv_status_payload(
-                conv.id, ConversationStatus.takeover, takeover_admin=admin_id
-            ),
+            _conv_status_payload(conv.id, ConversationStatus.takeover, takeover_admin=admin_id),
         )
 
     log.info(
@@ -252,15 +251,11 @@ async def send_admin_message(
     )
 
 
-async def takeover(
-    db: AsyncSession, *, conversation_id: int, admin_id: int
-) -> dict[str, object]:
+async def takeover(db: AsyncSession, *, conversation_id: int, admin_id: int) -> dict[str, object]:
     """Admin claims a conv. SW-39. Idempotent if already held by same admin."""
     conv = await _get_or_404(db, conversation_id)
     if conv.status == ConversationStatus.cerrada:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "no se puede tomar una conversación cerrada"
-        )
+        raise HTTPException(status.HTTP_409_CONFLICT, "no se puede tomar una conversación cerrada")
     if conv.status == ConversationStatus.takeover and conv.takeover_admin == admin_id:
         return {"status": conv.status.value, "takeover_admin": admin_id}
 
@@ -270,17 +265,13 @@ async def takeover(
 
     await publish_event(
         "conversation.status_changed",
-        _conv_status_payload(
-            conv.id, ConversationStatus.takeover, takeover_admin=admin_id
-        ),
+        _conv_status_payload(conv.id, ConversationStatus.takeover, takeover_admin=admin_id),
     )
     log.info("conversation_takeover", conversation_id=conv.id, admin_id=admin_id)
     return {"status": conv.status.value, "takeover_admin": admin_id}
 
 
-async def release(
-    db: AsyncSession, *, conversation_id: int, admin_id: int
-) -> dict[str, object]:
+async def release(db: AsyncSession, *, conversation_id: int, admin_id: int) -> dict[str, object]:
     """Admin returns conv to bot. Only from takeover."""
     conv = await _get_or_404(db, conversation_id)
     if conv.status != ConversationStatus.takeover:
@@ -299,15 +290,11 @@ async def release(
     return {"status": conv.status.value}
 
 
-async def close(
-    db: AsyncSession, *, conversation_id: int, admin_id: int
-) -> dict[str, object]:
+async def close(db: AsyncSession, *, conversation_id: int, admin_id: int) -> dict[str, object]:
     """Cierra la conversación. Stamps closed_at + closed_by."""
     conv = await _get_or_404(db, conversation_id)
     if conv.status == ConversationStatus.cerrada:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "la conversación ya está cerrada"
-        )
+        raise HTTPException(status.HTTP_409_CONFLICT, "la conversación ya está cerrada")
     conv.status = ConversationStatus.cerrada
     conv.closed_at = datetime.now()
     conv.closed_by = admin_id
@@ -327,9 +314,7 @@ async def close(
     return {"status": conv.status.value, "closed_at": conv.closed_at.isoformat()}
 
 
-async def reopen(
-    db: AsyncSession, *, conversation_id: int, admin_id: int
-) -> dict[str, object]:
+async def reopen(db: AsyncSession, *, conversation_id: int, admin_id: int) -> dict[str, object]:
     """Reabre una conv cerrada. Limpia closed_at/closed_by."""
     conv = await _get_or_404(db, conversation_id)
     if conv.status != ConversationStatus.cerrada:
@@ -349,19 +334,11 @@ async def reopen(
     return {"status": conv.status.value}
 
 
-async def delete_conversation(
-    db: AsyncSession, *, conversation_id: int, admin_id: int
-) -> None:
+async def delete_conversation(db: AsyncSession, *, conversation_id: int, admin_id: int) -> None:
     """Hard delete de la conversación + sus mensajes (FK cascade). Limpia cache."""
     conv = await _get_or_404(db, conversation_id)
     await db.delete(conv)
     await db.commit()
     await conversation_history_service.clear(conversation_id)
-    await publish_event(
-        "conversation.deleted", {"conversation_id": conversation_id}
-    )
-    log.info(
-        "conversation_deleted", conversation_id=conversation_id, admin_id=admin_id
-    )
-
-
+    await publish_event("conversation.deleted", {"conversation_id": conversation_id})
+    log.info("conversation_deleted", conversation_id=conversation_id, admin_id=admin_id)

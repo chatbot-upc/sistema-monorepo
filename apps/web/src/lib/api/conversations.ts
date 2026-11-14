@@ -3,10 +3,17 @@ import { apiFetch } from "./client";
 export type ConversationStatus = "abierta" | "cerrada" | "takeover";
 export type MessageRole = "student" | "bot" | "admin";
 
-export interface StudentRef {
-  phone_e164: string;
+export interface StudentRead {
+  id: number;
+  phone_e164: string | null;
+  whatsapp_user_id: string | null;
+  whatsapp_username: string | null;
   display_name: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
 }
+
+export type StudentRef = StudentRead;
 
 export interface Tag {
   id: number;
@@ -16,7 +23,10 @@ export interface Tag {
 
 export interface ConversationListItem {
   id: number;
-  student_phone: string;
+  student_id: number;
+  student_phone: string | null;
+  whatsapp_user_id: string | null;
+  whatsapp_username: string | null;
   display_name: string | null;
   status: ConversationStatus;
   opened_at: string;
@@ -70,7 +80,10 @@ export interface StudentProfile {
 
 export interface ConversationDetail {
   id: number;
-  student_phone: string;
+  student_id: number;
+  student_phone: string | null;
+  whatsapp_user_id: string | null;
+  whatsapp_username: string | null;
   display_name: string | null;
   email: string | null;
   status: ConversationStatus;

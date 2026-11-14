@@ -43,7 +43,11 @@ def _normalize_to(phone: str) -> str:
 
 
 async def send_message(
-    *, to: str, body: str, context: dict[str, Any] | None = None
+    *,
+    to: str | None = None,
+    recipient: str | None = None,
+    body: str,
+    context: dict[str, Any] | None = None,
 ) -> str:
     """POST a text message to Meta Cloud API. Returns the `wamid` echoed back.
 
@@ -53,12 +57,18 @@ async def send_message(
 
     Raises `httpx.HTTPStatusError` on Meta-side errors (the worker retries via Celery).
     """
+    if (to is None) == (recipient is None):
+        raise ValueError("provide exactly one of to or recipient")
+    destination = to if to is not None else recipient
+    if destination is None or not destination.strip():
+        raise ValueError("recipient must not be empty")
     settings = get_settings()
     if not settings.meta_access_token or not settings.meta_phone_number_id:
         synthetic = f"{_DEV_PREFIX}{secrets.token_hex(8)}"
         log.warning(
             "whatsapp_outbound_dev_bypass",
             to=to,
+            recipient=recipient,
             body_preview=body[:80],
             synthetic_id=synthetic,
             in_reply_to=context.get("message_id") if context else None,
@@ -72,10 +82,13 @@ async def send_message(
     payload: dict[str, Any] = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
-        "to": _normalize_to(to),
         "type": "text",
         "text": {"body": body},
     }
+    if to is not None:
+        payload["to"] = _normalize_to(to)
+    else:
+        payload["recipient"] = recipient
     if context:
         payload["context"] = context
     headers = {
@@ -95,7 +108,7 @@ async def send_message(
     meta_id = messages[0].get("id")
     if not isinstance(meta_id, str):
         raise RuntimeError(f"meta response missing message id: {data}")
-    log.info("whatsapp_outbound_sent", to=to, meta_message_id=meta_id)
+    log.info("whatsapp_outbound_sent", to=to, recipient=recipient, meta_message_id=meta_id)
     return meta_id
 
 
@@ -139,8 +152,6 @@ async def mark_read(*, message_id: str, typing: bool = False) -> None:
         resp.raise_for_status()
         log.info("whatsapp_mark_read_sent", message_id=message_id, typing=typing)
     except Exception:
-        log.warning(
-            "whatsapp_mark_read_failed", message_id=message_id, typing=typing
-        )
+        log.warning("whatsapp_mark_read_failed", message_id=message_id, typing=typing)
     finally:
         await client.aclose()

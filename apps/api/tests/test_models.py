@@ -36,13 +36,13 @@ async def test_create_conversation_with_student(db_session: AsyncSession) -> Non
     db_session.add(student)
     await db_session.flush()
 
-    conv = Conversation(student_phone=student.phone_e164, status=ConversationStatus.abierta)
+    conv = Conversation(
+        student_id=student.id, student_phone=student.phone_e164, status=ConversationStatus.abierta
+    )
     db_session.add(conv)
     await db_session.flush()
 
-    result = await db_session.execute(
-        select(Conversation).where(Conversation.id == conv.id)
-    )
+    result = await db_session.execute(select(Conversation).where(Conversation.id == conv.id))
     loaded = result.scalar_one()
     assert loaded.student.display_name == "Juan"
     assert loaded.status == ConversationStatus.abierta
@@ -51,7 +51,8 @@ async def test_create_conversation_with_student(db_session: AsyncSession) -> Non
 async def test_message_belongs_to_conversation(db_session: AsyncSession) -> None:
     student = Student(phone_e164="+51900000002")
     db_session.add(student)
-    conv = Conversation(student_phone=student.phone_e164)
+    await db_session.flush()
+    conv = Conversation(student_id=student.id, student_phone=student.phone_e164)
     db_session.add(conv)
     await db_session.flush()
 
@@ -88,9 +89,7 @@ async def test_document_chunk_embedding(db_session: AsyncSession) -> None:
     db_session.add(chunk)
     await db_session.flush()
 
-    result = await db_session.execute(
-        select(DocumentChunk).where(DocumentChunk.id == chunk.id)
-    )
+    result = await db_session.execute(select(DocumentChunk).where(DocumentChunk.id == chunk.id))
     loaded = result.scalar_one()
     assert len(loaded.embedding) == 1536
     assert loaded.chunk_text.startswith("Matrícula")
@@ -119,7 +118,8 @@ async def test_seed_data_present(db_session: AsyncSession) -> None:
 async def test_conversation_timestamps(db_session: AsyncSession) -> None:
     student = Student(phone_e164="+51900000003")
     db_session.add(student)
-    conv = Conversation(student_phone=student.phone_e164)
+    await db_session.flush()
+    conv = Conversation(student_id=student.id, student_phone=student.phone_e164)
     db_session.add(conv)
     await db_session.flush()
     await db_session.refresh(conv)

@@ -11,6 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
+import {
+  contactDisplayName,
+  contactIdentityLabel,
+  contactInitials,
+} from "@/lib/contact-display";
 import { useToast } from "@/components/ui/ToastProvider";
 import { cn } from "@/lib/cn";
 import { parseApiDate } from "@/lib/dates";
@@ -39,15 +44,6 @@ const GRADIENTS = ["coral", "blue", "violet", "mint", "amber", "rose"] as const;
 
 function gradientOf(id: number): (typeof GRADIENTS)[number] {
   return GRADIENTS[id % GRADIENTS.length];
-}
-
-function initialsOf(name: string | null, phone: string): string {
-  const src = name?.trim();
-  if (src) {
-    const parts = src.split(/\s+/);
-    return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
-  }
-  return phone.replace(/\D/g, "").slice(-2);
 }
 
 function fmtDate(iso: string | null): string {
@@ -105,7 +101,7 @@ export function ContactPanel({
   const { toast } = useToast();
   const id = conversation.id;
   const profile = conversation.student_profile;
-  const name = profile?.full_name ?? conversation.display_name ?? conversation.student_phone;
+  const name = contactDisplayName(conversation, profile?.full_name);
 
   const [history, setHistory] = useState<ConversationHistory | null>(null);
   const [notes, setNotes] = useState<InternalNote[]>([]);
@@ -163,22 +159,33 @@ export function ContactPanel({
             />
           </button>
           <Avatar
-            initials={initialsOf(
-              profile?.full_name ?? conversation.display_name,
-              conversation.student_phone,
-            )}
+            initials={contactInitials(conversation, profile?.full_name)}
             gradient={gradientOf(id)}
             size="xl"
           />
-          <div className="mt-3 text-[18px] font-bold tracking-[-0.4px]">{name}</div>
-          <div className="text-[12px] text-muted font-mono mt-0.5">
-            {conversation.student_phone}
+          <div className="mt-3 text-[18px] font-bold tracking-[-0.4px] break-all">
+            {name}
+          </div>
+          <div className="text-[12px] text-muted font-mono mt-0.5 break-all">
+            {contactIdentityLabel(conversation)}
           </div>
         </div>
 
         {/* Correo editable */}
         <section className="px-6 py-5 border-b border-line">
           <SectionLabel>Contacto</SectionLabel>
+          <div className="mt-3 flex flex-col gap-2.5">
+            <Row
+              label="Teléfono"
+              value={conversation.student_phone ?? "No disponible"}
+            />
+            {conversation.whatsapp_user_id ? (
+              <Row label="WhatsApp ID" value={conversation.whatsapp_user_id} />
+            ) : null}
+            {conversation.whatsapp_username ? (
+              <Row label="Usuario" value={conversation.whatsapp_username} />
+            ) : null}
+          </div>
           <EmailField
             id={id}
             email={conversation.email}
@@ -203,7 +210,7 @@ export function ContactPanel({
             </div>
           ) : (
             <p className="mt-3 text-[12px] text-muted">
-              Sin perfil académico vinculado a este número.
+              Sin perfil académico vinculado a este contacto.
             </p>
           )}
         </section>
@@ -723,7 +730,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <span className="text-[12px] text-muted shrink-0">{label}</span>
-      <span className="text-[12.5px] font-medium text-right">{value}</span>
+      <span className="text-[12.5px] font-medium text-right min-w-0 break-all">{value}</span>
     </div>
   );
 }
