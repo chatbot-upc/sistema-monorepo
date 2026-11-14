@@ -17,12 +17,10 @@ if TYPE_CHECKING:
 class Conversation(IdPk, Timestamped, Base):
     __tablename__ = "conversations"
 
-    student_phone: Mapped[str] = mapped_column(
-        String(32),
-        ForeignKey("students.phone_e164", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
+    student_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("students.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    student_phone: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     status: Mapped[ConversationStatus] = mapped_column(
         Enum(ConversationStatus, name="conversation_status"),
         nullable=False,

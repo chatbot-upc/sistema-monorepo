@@ -48,7 +48,7 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
                 to_local(Conversation.opened_at) <= datetime.combine(to_date, time.max)
             )
         if phone:
-            query = query.join(Student, Conversation.student_phone == Student.phone_e164)
+            query = query.join(Student, Conversation.student_id == Student.id)
             query = query.where(Student.display_name.op("%")(phone))
         return query
 
@@ -80,7 +80,8 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         )
         profile_name_subq = (
             select(StudentProfile.full_name)
-            .where(StudentProfile.phone_e164 == Conversation.student_phone)
+            .join(Student, Student.phone_e164 == StudentProfile.phone_e164)
+            .where(Student.id == Conversation.student_id)
             .correlate(Conversation)
             .scalar_subquery()
         )
@@ -124,22 +125,16 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         result = await db.execute(count_query)
         return int(result.scalar_one())
 
-    async def count_by_status(
-        self, db: AsyncSession
-    ) -> dict[ConversationStatus, int]:
+    async def count_by_status(self, db: AsyncSession) -> dict[ConversationStatus, int]:
         """Conteo agrupado por estado en una sola query (para los tabs)."""
         result = await db.execute(
-            select(Conversation.status, func.count(Conversation.id)).group_by(
-                Conversation.status
-            )
+            select(Conversation.status, func.count(Conversation.id)).group_by(Conversation.status)
         )
         return {status: int(count) for status, count in result.all()}
 
     async def count_by_phone(self, db: AsyncSession, phone: str) -> int:
         result = await db.execute(
-            select(func.count(Conversation.id)).where(
-                Conversation.student_phone == phone
-            )
+            select(func.count(Conversation.id)).where(Conversation.student_phone == phone)
         )
         return int(result.scalar_one())
 
@@ -151,6 +146,24 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             .where(Conversation.student_phone == phone)
         )
         return int(result.scalar_one())
+
+    async def count_by_student(self, db: AsyncSession, student_id: int) -> int:
+        return int(
+            await db.scalar(
+                select(func.count(Conversation.id)).where(Conversation.student_id == student_id)
+            )
+            or 0
+        )
+
+    async def count_messages_by_student(self, db: AsyncSession, student_id: int) -> int:
+        return int(
+            await db.scalar(
+                select(func.count(Message.id))
+                .join(Conversation, Message.conversation_id == Conversation.id)
+                .where(Conversation.student_id == student_id)
+            )
+            or 0
+        )
 
     async def get_with_messages(
         self, db: AsyncSession, conversation_id: int
@@ -175,9 +188,22 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
           - created: True solo si se creó una conversación nueva.
           - reopened: True si se reabrió una que estaba `cerrada`.
         """
+        from .student import student_repository
+
+        student, _ = await student_repository.upsert_by_phone(db, phone_e164=student_phone)
+        return await self.get_or_create_open_for_student(db, student.id)
+
+    async def get_or_create_open_for_student(
+        self, db: AsyncSession, student_id: int
+    ) -> tuple[Conversation, bool, bool]:
+        # Parent row lock serializes first-conversation creation without requiring
+        # a uniqueness constraint that would invalidate existing historical rows.
+        student = await db.scalar(select(Student).where(Student.id == student_id).with_for_update())
+        if student is None:
+            raise ValueError("student not found")
         result = await db.execute(
             select(Conversation)
-            .where(Conversation.student_phone == student_phone)
+            .where(Conversation.student_id == student_id)
             .order_by(Conversation.opened_at.desc())
             .limit(1)
         )
@@ -191,7 +217,9 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
                 return latest, False, True
             return latest, False, False
         conv = Conversation(
-            student_phone=student_phone, status=ConversationStatus.abierta
+            student_id=student_id,
+            student_phone=student.phone_e164,
+            status=ConversationStatus.abierta,
         )
         db.add(conv)
         await db.flush()
