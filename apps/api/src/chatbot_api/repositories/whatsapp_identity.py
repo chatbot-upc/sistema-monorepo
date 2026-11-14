@@ -7,7 +7,7 @@ It is released by commit/rollback, before classifier, RAG or network work.
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chatbot_api.models import WhatsAppIdentity
+from chatbot_api.models import WhatsAppIdentity, WhatsAppPhoneQuarantine
 
 
 async def lock_identities(db: AsyncSession) -> None:
@@ -21,4 +21,13 @@ async def get_alias(db: AsyncSession, scope: str, user_id: str) -> WhatsAppIdent
         )
     )
 
+    return result.scalars().first()
+
+
+async def get_phone_quarantine(db: AsyncSession, phone: str) -> WhatsAppPhoneQuarantine | None:
+    result = await db.execute(
+        select(WhatsAppPhoneQuarantine)
+        .where(WhatsAppPhoneQuarantine.phone_e164 == phone)
+        .execution_options(populate_existing=True)
+    )
     return result.scalars().first()

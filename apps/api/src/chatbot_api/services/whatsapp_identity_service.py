@@ -3,12 +3,23 @@
 from datetime import datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.core.settings import get_settings
-from chatbot_api.models import Conversation, Student, WhatsAppIdentity, WhatsAppIdentityEvent
-from chatbot_api.repositories.whatsapp_identity import get_alias, lock_identities
+from chatbot_api.models import (
+    Conversation,
+    Student,
+    WhatsAppIdentity,
+    WhatsAppIdentityEvent,
+    WhatsAppPhoneQuarantine,
+)
+from chatbot_api.repositories.whatsapp_identity import (
+    get_alias,
+    get_phone_quarantine,
+    lock_identities,
+)
 from chatbot_api.schemas.whatsapp import ParsedIdentityChange, ParsedInboundMessage
 from chatbot_api.services import whatsapp_service
 from chatbot_api.services.whatsapp_webhook_service import resolve_identity_scope
@@ -58,12 +69,22 @@ async def resolve_inbound(db: AsyncSession, parsed: ParsedInboundMessage) -> tup
     alias = (
         await get_alias(db, scope, parsed.from_user_id) if scope and parsed.from_user_id else None
     )
+    quarantine = await get_phone_quarantine(db, parsed.from_phone) if parsed.from_phone else None
+    if quarantine and not parsed.from_user_id:
+        structlog.get_logger().warning(
+            "whatsapp_phone_quarantined", meta_message_id=parsed.meta_message_id
+        )
+        raise IdentityConflictError("Phone is quarantined; verified operator recovery required")
     phone_owner = (
-        await db.scalar(select(Student).where(Student.phone_e164 == parsed.from_phone))
+        await db.scalar(
+            select(Student)
+            .where(Student.phone_e164 == parsed.from_phone)
+            .execution_options(populate_existing=True)
+        )
         if parsed.from_phone
         else None
     )
-    student = await db.get(Student, alias.student_id) if alias else None
+    student = await db.get(Student, alias.student_id, populate_existing=True) if alias else None
     created = False
     if student is None:
         student = phone_owner
@@ -76,7 +97,9 @@ async def resolve_inbound(db: AsyncSession, parsed: ParsedInboundMessage) -> tup
             if has_alias or (student.whatsapp_scope and student.whatsapp_scope != scope):
                 student = None
         if student is None:
-            student = Student(phone_e164=parsed.from_phone if phone_owner is None else None)
+            student = Student(
+                phone_e164=parsed.from_phone if phone_owner is None and not quarantine else None
+            )
             db.add(student)
             await db.flush()
             created = True
@@ -100,12 +123,43 @@ async def resolve_inbound(db: AsyncSession, parsed: ParsedInboundMessage) -> tup
         and student.business_phone_number_id != parsed.business_phone_number_id
     ):
         raise IdentityConflictError("Contact belongs to another business sender")
+    conflict = phone_owner is not None and phone_owner.id != student.id
+    if (
+        phone_owner is not None
+        and conflict
+        and parsed.from_phone
+        and ts >= phone_owner.phone_timestamp
+    ):
+        # A newer incompatible observation makes the previous owner's academic
+        # association unsafe too. A durable tombstone prevents repeated BSUID or
+        # phone-only observations from reclaiming the now-unowned phone.
+        if quarantine is None:
+            quarantine = WhatsAppPhoneQuarantine(
+                phone_e164=parsed.from_phone,
+                conflict_timestamp=ts,
+                original_student_id=phone_owner.id,
+                conflicting_student_id=student.id,
+            )
+            db.add(quarantine)
+        await _set_phone(db, phone_owner, None)
+        phone_owner.phone_timestamp = ts
+        structlog.get_logger().warning(
+            "whatsapp_phone_conflict_quarantined",
+            original_student_id=phone_owner.id,
+            conflicting_student_id=student.id,
+            meta_message_id=parsed.meta_message_id,
+        )
+    if quarantine:
+        quarantine.conflict_timestamp = max(quarantine.conflict_timestamp, ts)
     # Retired aliases and delayed pre-rotation messages may contribute history only.
     current = not parsed.from_user_id or parsed.from_user_id == student.whatsapp_user_id
     if current:
-        if parsed.from_phone and ts > student.phone_timestamp:
-            conflict = phone_owner is not None and phone_owner.id != student.id
-            await _set_phone(db, student, None if conflict else parsed.from_phone)
+        blocked_phone = conflict or quarantine is not None
+        newer_phone = ts > student.phone_timestamp or (
+            blocked_phone and ts == student.phone_timestamp
+        )
+        if parsed.from_phone and newer_phone:
+            await _set_phone(db, student, None if blocked_phone else parsed.from_phone)
             student.phone_timestamp = ts
             # Actual observations supersede opaque legacy number routes.
             student.whatsapp_routing_id = None

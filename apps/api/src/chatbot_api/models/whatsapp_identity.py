@@ -27,3 +27,18 @@ class WhatsAppIdentityEvent(IdPk, Base):
     scope: Mapped[str] = mapped_column(String(255), nullable=False)
     meta_message_id: Mapped[str] = mapped_column(String(255), nullable=False)
     timestamp: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class WhatsAppPhoneQuarantine(Base):
+    """Persist ambiguous academic phone evidence until verified operator recovery."""
+
+    __tablename__ = "whatsapp_phone_quarantines"
+
+    phone_e164: Mapped[str] = mapped_column(String(32), primary_key=True)
+    conflict_timestamp: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    original_student_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("students.id", ondelete="RESTRICT"), nullable=False
+    )
+    conflicting_student_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("students.id", ondelete="RESTRICT"), nullable=False
+    )

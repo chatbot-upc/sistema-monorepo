@@ -25,7 +25,7 @@ from .student import Student
 from .student_billing import StudentBillingInstallment
 from .student_profile import StudentProfile
 from .tag import Tag
-from .whatsapp_identity import WhatsAppIdentity, WhatsAppIdentityEvent
+from .whatsapp_identity import WhatsAppIdentity, WhatsAppIdentityEvent, WhatsAppPhoneQuarantine
 
 __all__ = [
     "Admin",
@@ -55,4 +55,5 @@ __all__ = [
     "Tag",
     "WhatsAppIdentity",
     "WhatsAppIdentityEvent",
+    "WhatsAppPhoneQuarantine",
 ]

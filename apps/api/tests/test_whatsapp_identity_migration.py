@@ -84,6 +84,31 @@ def test_upgrade_backfill_phone_roundtrip_and_lossless_guard():
         with pytest.raises(RuntimeError, match="losslessly"):
             command.downgrade(cfg, old)
         asyncio.run(sql(url, ["DELETE FROM students WHERE phone_e164 IS NULL"]))
+        # A durable phone quarantine must also refuse rollback, even when every
+        # contact has a phone and no BSUID alias/event has been inserted yet.
+        asyncio.run(
+            sql(
+                url,
+                [
+                    "INSERT INTO students(phone_e164) VALUES ('+51900008902')",
+                    "INSERT INTO whatsapp_phone_quarantines "
+                    "(phone_e164,conflict_timestamp,original_student_id,conflicting_student_id) "
+                    "SELECT '+51900008901',200,a.id,b.id FROM students a,students b "
+                    "WHERE a.phone_e164='+51900008901' AND b.phone_e164='+51900008902'",
+                ],
+            )
+        )
+        with pytest.raises(RuntimeError, match="losslessly"):
+            command.downgrade(cfg, old)
+        asyncio.run(
+            sql(
+                url,
+                [
+                    "DELETE FROM whatsapp_phone_quarantines",
+                    "DELETE FROM students WHERE phone_e164='+51900008902'",
+                ],
+            )
+        )
         command.downgrade(cfg, old)
         assert asyncio.run(sql(url, snapshots)) == before
         command.upgrade(cfg, "head")

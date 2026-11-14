@@ -79,6 +79,24 @@ def upgrade() -> None:
         sa.UniqueConstraint("scope", "meta_message_id"),
     )
 
+    op.create_table(
+        "whatsapp_phone_quarantines",
+        sa.Column("phone_e164", sa.String(32), primary_key=True),
+        sa.Column("conflict_timestamp", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "original_student_id",
+            sa.BigInteger(),
+            sa.ForeignKey("students.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+        sa.Column(
+            "conflicting_student_id",
+            sa.BigInteger(),
+            sa.ForeignKey("students.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+    )
+
 
 def downgrade() -> None:
     bind = op.get_bind()
@@ -86,12 +104,14 @@ def downgrade() -> None:
     unsafe = bind.execute(
         sa.text("""SELECT EXISTS(SELECT 1 FROM students WHERE phone_e164 IS NULL OR whatsapp_user_id IS NOT NULL OR whatsapp_routing_id IS NOT NULL)
         OR EXISTS(SELECT 1 FROM whatsapp_identities) OR EXISTS(SELECT 1 FROM whatsapp_identity_events)
+        OR EXISTS(SELECT 1 FROM whatsapp_phone_quarantines)
         OR EXISTS(SELECT 1 FROM conversations c JOIN students s ON s.id=c.student_id WHERE c.student_phone IS DISTINCT FROM s.phone_e164)""")
     ).scalar()
     if unsafe:
         raise RuntimeError(
             "Cannot downgrade WhatsApp identity data losslessly; retain 0024 or restore a verified pre-migration backup"
         )
+    op.drop_table("whatsapp_phone_quarantines")
     op.drop_table("whatsapp_identity_events")
     op.drop_table("whatsapp_identities")
     op.drop_constraint("fk_conversations_student_id_students", "conversations", type_="foreignkey")

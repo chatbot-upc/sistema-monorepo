@@ -167,7 +167,7 @@ async def test_conflicts_do_not_merge_history_or_academic_profile(db_session):
         db_session, inbound(user="third", phone="+51900008106")
     )
     await identities.resolve_inbound(
-        db_session, inbound(user="third", phone=first.phone_e164, timestamp=101)
+        db_session, inbound(user="third", phone="+51900008105", timestamp=101)
     )
     assert third.phone_e164 is None
 
