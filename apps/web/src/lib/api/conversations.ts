@@ -35,6 +35,8 @@ export interface ConversationListItem {
   last_message_preview: string | null;
   /** Último mensaje del hilo; null si no tiene. La lista se ordena por esto. */
   last_message_at: string | null;
+  /** Mensajes del estudiante desde la última vez que un admin abrió el hilo. */
+  unread_count: number;
   starred: boolean;
 }
 
@@ -243,6 +245,13 @@ export async function updateContact(
     `/api/v1/conversations/${conversationId}/contact`,
     { method: "PATCH", body: JSON.stringify({ email }) },
   );
+}
+
+/** El admin abrió el hilo: limpia el contador de no leídos (para todos). */
+export async function markSeen(conversationId: number): Promise<void> {
+  await apiFetch<void>(`/api/v1/conversations/${conversationId}/seen`, {
+    method: "POST",
+  });
 }
 
 export async function setStar(

@@ -2,13 +2,13 @@ from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chatbot_api.core.timezone import to_local
 from chatbot_api.models import Conversation, Message, Student, StudentProfile
-from chatbot_api.models.enums import ConversationStatus
+from chatbot_api.models.enums import ConversationStatus, MessageRole
 
 from .base import BaseRepository
 
@@ -62,9 +62,12 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         phone: str | None = None,
         skip: int = 0,
         limit: int = 20,
-    ) -> list[tuple[Conversation, int, str | None, str | None, datetime | None]]:
+    ) -> list[tuple[Conversation, int, str | None, str | None, datetime | None, int]]:
         """Single query: (Conversation, message_count, last_message_preview,
-        profile_name, last_message_at).
+        profile_name, last_message_at, unread_count).
+
+        `unread_count` = mensajes del estudiante posteriores a la última vez que
+        un admin abrió el hilo (`agent_last_seen_at`).
 
         Orden por última actividad (estilo WhatsApp/Chatwoot): como hay un solo
         hilo por contacto que se reabre, `opened_at` es la fecha del primer
@@ -91,6 +94,19 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             .correlate(Conversation)
             .scalar_subquery()
         )
+        unread_subq = (
+            select(func.count(Message.id))
+            .where(
+                Message.conversation_id == Conversation.id,
+                Message.role == MessageRole.student,
+                or_(
+                    Conversation.agent_last_seen_at.is_(None),
+                    Message.created_at > Conversation.agent_last_seen_at,
+                ),
+            )
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
         profile_name_subq = (
             select(StudentProfile.full_name)
             .join(Student, Student.phone_e164 == StudentProfile.phone_e164)
@@ -105,6 +121,7 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             last_msg_subq.label("last_message_content"),
             profile_name_subq.label("profile_name"),
             last_msg_at_subq.label("last_message_at"),
+            unread_subq.label("unread_count"),
         ).options(selectinload(Conversation.student))
         query = self._apply_filters(
             query, status=status, from_date=from_date, to_date=to_date, phone=phone
@@ -124,6 +141,7 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
                 _truncate(row.last_message_content),
                 row.profile_name,
                 row.last_message_at,
+                int(row.unread_count),
             )
             for row in rows
         ]

@@ -268,3 +268,47 @@ async def test_reports_conversations_by_day(
     body = response.json()
     assert isinstance(body, list)
     assert any(row["count"] >= 1 for row in body)
+
+
+async def test_unread_count_and_mark_seen(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Solo cuentan los mensajes del estudiante posteriores a `agent_last_seen_at`."""
+    student = await factories.make_student(db_session, phone="+51900100010")
+    conv = await factories.make_conversation(
+        db_session, student_phone=student.phone_e164
+    )
+    future = datetime.now() + timedelta(days=3)
+    for role in (MessageRole.student, MessageRole.student, MessageRole.bot):
+        msg = await factories.make_message(
+            db_session, conversation_id=conv.id, role=role
+        )
+        msg.created_at = future
+    await db_session.flush()
+
+    async def unread() -> int:
+        items = (
+            await client.get("/api/v1/conversations?size=5", headers=DEV_USER_HEADER)
+        ).json()["items"]
+        return next(i["unread_count"] for i in items if i["id"] == conv.id)
+
+    # Nunca abierta: los 2 del estudiante, no el del bot.
+    assert await unread() == 2
+
+    # Abrirla limpia lo anterior… (seen = now() de la DB; movemos los mensajes
+    # al pasado para que queden antes de la marca).
+    await db_session.refresh(conv, ["messages"])
+    for m in conv.messages:
+        m.created_at = datetime.now() - timedelta(minutes=5)
+    await db_session.flush()
+    response = await client.post(
+        f"/api/v1/conversations/{conv.id}/seen", headers=DEV_USER_HEADER
+    )
+    assert response.status_code == 204
+    assert await unread() == 0
+
+    # …y un mensaje nuevo del estudiante vuelve a contar.
+    late = await factories.make_message(db_session, conversation_id=conv.id)
+    late.created_at = future
+    await db_session.flush()
+    assert await unread() == 1

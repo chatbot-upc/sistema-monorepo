@@ -9,6 +9,7 @@ export type StreamEventType =
   | "message.status_changed"
   | "conversation.escalated"
   | "conversation.status_changed"
+  | "conversation.seen"
   | "conversation.deleted"
   | "document.status_changed";
 
