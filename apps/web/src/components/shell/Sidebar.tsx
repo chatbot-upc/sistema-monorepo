@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { ChevronUp, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/Avatar";
@@ -15,7 +16,6 @@ interface SidebarProps {
 
 export function Sidebar({ conversationsCount }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { toast } = useToast();
 
   return (
@@ -91,8 +91,8 @@ export function Sidebar({ conversationsCount }: SidebarProps) {
               destructive
               icon={<LogOut size={14} strokeWidth={2} />}
               onSelect={() => {
-                toast.success("Sesión cerrada");
-                router.push("/login");
+                // Antes solo navegaba a /login y la cookie de sesión seguía viva.
+                void signOut({ redirectTo: "/login" });
               }}
             >
               Cerrar sesión

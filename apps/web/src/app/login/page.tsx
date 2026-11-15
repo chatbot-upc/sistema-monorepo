@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Suspense, useState, useTransition } from "react";
+import { Suspense, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -12,20 +11,32 @@ import { Input } from "@/components/ui/Input";
 
 import { ForgotPasswordButton } from "./_components/ForgotPasswordButton";
 
+/**
+ * Solo aceptamos rutas internas como destino post-login. Un callbackUrl absoluto
+ * (`https://…`, `//host`) sería un open redirect, y volver a `/login` o
+ * `/api/auth` dejaría al usuario rebotando en la misma pantalla.
+ */
+function safeCallbackUrl(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  if (raw.startsWith("/login") || raw.startsWith("/api/auth")) return "/dashboard";
+  return raw;
+}
+
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") ?? "/dashboard";
+  const callbackUrl = safeCallbackUrl(params.get("callbackUrl"));
 
   const [email, setEmail] = useState("dev@upc.edu.pe");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isPending) return;
     setError(null);
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const res = await signIn("credentials", {
         email,
         password,
@@ -33,11 +44,19 @@ function LoginForm() {
       });
       if (!res || res.error) {
         setError("Credenciales inválidas");
+        setIsPending(false);
         return;
       }
-      router.push(callbackUrl);
-      router.refresh();
-    });
+      // Navegación completa, no router.push: el Router Cache del cliente puede
+      // tener guardada la respuesta de cuando aún no había sesión (un redirect
+      // del proxy a /login), y la navegación suave la reutilizaba → el usuario
+      // quedaba en "Ingresando..." o de vuelta en el login. Un request nuevo
+      // viaja con la cookie de sesión recién emitida y el proxy lo deja pasar.
+      window.location.assign(callbackUrl);
+    } catch {
+      setError("No se pudo conectar. Intenta de nuevo.");
+      setIsPending(false);
+    }
   }
 
   return (
@@ -104,14 +123,7 @@ function LoginForm() {
             </div>
           </form>
 
-          <div className="px-4 sm:px-12 pb-6 sm:pb-12 text-center">
-            <Link
-              href="/dashboard"
-              className="text-xs font-mono text-muted-2 hover:text-muted"
-            >
-              {/* placeholder link removed once auth wired */}
-            </Link>
-          </div>
+          <div className="pb-6 sm:pb-12" />
         </Card>
 
         <p className="text-[11px] font-mono text-muted-2 mt-2">
