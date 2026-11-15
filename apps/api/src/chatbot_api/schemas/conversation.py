@@ -34,6 +34,7 @@ class ConversationListItem(BaseModel):
     closed_at: datetime | None
     message_count: int
     last_message_preview: str | None
+    last_message_at: datetime | None = None
     starred: bool = False
 
 

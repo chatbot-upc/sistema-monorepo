@@ -37,6 +37,41 @@ async def test_list_conversations_paginated(
     assert body["pages"] == ceil(body["total"] / 2)
 
 
+async def test_list_conversations_orders_by_last_activity(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Un hilo viejo con un mensaje nuevo sube por encima de uno abierto después.
+
+    Fechas en el futuro para quedar arriba aunque otros tests hayan commiteado
+    filas en la tabla.
+    """
+    student = await factories.make_student(db_session, phone="+51900100009")
+    now = datetime.now()
+    old_thread = await factories.make_conversation(
+        db_session,
+        student_phone=student.phone_e164,
+        opened_at=now - timedelta(days=30),
+    )
+    newer_thread = await factories.make_conversation(
+        db_session,
+        student_phone=student.phone_e164,
+        opened_at=now + timedelta(days=1),
+    )
+    msg = await factories.make_message(db_session, conversation_id=old_thread.id)
+    msg.created_at = now + timedelta(days=2)
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/v1/conversations?page=1&size=5", headers=DEV_USER_HEADER
+    )
+    assert response.status_code == 200
+    items = response.json()["items"]
+    ids = [item["id"] for item in items]
+    assert ids[:2] == [old_thread.id, newer_thread.id]
+    assert items[0]["last_message_at"] is not None
+    assert items[1]["last_message_at"] is None
+
+
 async def test_list_conversations_filter_status(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:

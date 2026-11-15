@@ -62,8 +62,15 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
         phone: str | None = None,
         skip: int = 0,
         limit: int = 20,
-    ) -> list[tuple[Conversation, int, str | None, str | None]]:
-        """Single query: (Conversation, message_count, last_message_preview, profile_name)."""
+    ) -> list[tuple[Conversation, int, str | None, str | None, datetime | None]]:
+        """Single query: (Conversation, message_count, last_message_preview,
+        profile_name, last_message_at).
+
+        Orden por última actividad (estilo WhatsApp/Chatwoot): como hay un solo
+        hilo por contacto que se reabre, `opened_at` es la fecha del primer
+        contacto y dejaría arriba conversaciones viejas. Sin mensajes cae a
+        `opened_at`; `id` desempata para que la paginación sea estable.
+        """
         msg_count_subq = (
             select(func.count(Message.id))
             .where(Message.conversation_id == Conversation.id)
@@ -75,6 +82,12 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             .where(Message.conversation_id == Conversation.id)
             .order_by(Message.created_at.desc())
             .limit(1)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        last_msg_at_subq = (
+            select(func.max(Message.created_at))
+            .where(Message.conversation_id == Conversation.id)
             .correlate(Conversation)
             .scalar_subquery()
         )
@@ -91,11 +104,17 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
             msg_count_subq.label("message_count"),
             last_msg_subq.label("last_message_content"),
             profile_name_subq.label("profile_name"),
+            last_msg_at_subq.label("last_message_at"),
         ).options(selectinload(Conversation.student))
         query = self._apply_filters(
             query, status=status, from_date=from_date, to_date=to_date, phone=phone
         )
-        query = query.order_by(Conversation.opened_at.desc()).offset(skip).limit(limit)
+        last_activity = func.coalesce(last_msg_at_subq, Conversation.opened_at)
+        query = (
+            query.order_by(last_activity.desc(), Conversation.id.desc())
+            .offset(skip)
+            .limit(limit)
+        )
         result = await db.execute(query)
         rows = result.unique().all()
         return [
@@ -104,6 +123,7 @@ class ConversationRepository(BaseRepository[Conversation, _ConvCreate, _ConvUpda
                 int(row.message_count),
                 _truncate(row.last_message_content),
                 row.profile_name,
+                row.last_message_at,
             )
             for row in rows
         ]
