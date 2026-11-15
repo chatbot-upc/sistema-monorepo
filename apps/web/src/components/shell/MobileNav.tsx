@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { Menu, X, ChevronUp, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/Avatar";
@@ -21,7 +22,6 @@ interface MobileNavProps {
 // en pantallas estrechas.
 export function MobileNav({ conversationsCount }: MobileNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
 
@@ -169,8 +169,8 @@ export function MobileNav({ conversationsCount }: MobileNavProps) {
                   destructive
                   icon={<LogOut size={14} strokeWidth={2} />}
                   onSelect={() => {
-                    toast.success("Sesión cerrada");
-                    router.push("/login");
+                    // Antes solo navegaba a /login y la cookie de sesión seguía viva.
+                    void signOut({ redirectTo: "/login" });
                   }}
                 >
                   Cerrar sesión

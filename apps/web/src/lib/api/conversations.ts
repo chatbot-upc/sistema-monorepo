@@ -33,6 +33,8 @@ export interface ConversationListItem {
   closed_at: string | null;
   message_count: number;
   last_message_preview: string | null;
+  /** Último mensaje del hilo; null si no tiene. La lista se ordena por esto. */
+  last_message_at: string | null;
   starred: boolean;
 }
 

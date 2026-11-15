@@ -45,6 +45,7 @@ import {
   conversationStatsAction,
   deleteAction,
   loadConversationsAction,
+  loadMessagesAction,
 } from "../_actions/conversations";
 import { MessageComposer } from "./MessageComposer";
 import { ConversationActions } from "./ConversationActions";
@@ -101,20 +102,41 @@ function gradientOf(id: number): (typeof GRADIENTS)[number] {
   return GRADIENTS[id % GRADIENTS.length];
 }
 
+// Última actividad del hilo (ms). Hay un solo hilo por contacto que se reabre,
+// así que `opened_at` es el primer contacto: ordenar por él deja arriba chats
+// viejos. Sin mensajes cae a `opened_at`. Mismo criterio que el backend.
+function activityTime(c: ConversationListItem): number {
+  return parseApiDate(c.last_message_at ?? c.opened_at).getTime();
+}
+
+function byActivityDesc(a: ConversationListItem, b: ConversationListItem) {
+  return activityTime(b) - activityTime(a) || b.id - a.id;
+}
+
 // Picks which conversation to open after the active one is deleted: the most
 // recent takeover (an escalation needs attention) else the most recent overall.
 function pickNextConversation(
   list: ConversationListItem[],
   excludeId: number,
 ): ConversationListItem | null {
-  const remaining = [...list]
+  const remaining = list
     .filter((c) => c.id !== excludeId)
-    .sort(
-      (a, b) =>
-        new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime(),
-    );
+    .sort(byActivityDesc);
   if (remaining.length === 0) return null;
   return remaining.find((c) => c.status === "takeover") ?? remaining[0];
+}
+
+// Fecha de la lista estilo WhatsApp: hora si fue hoy, si no "14 nov".
+function fmtActivity(iso: string): string {
+  const d = parseApiDate(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay
+    ? d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("es-PE", { month: "short", day: "2-digit" });
 }
 
 function fmtTime(iso: string | null): string {
@@ -122,14 +144,6 @@ function fmtTime(iso: string | null): string {
   return parseApiDate(iso).toLocaleTimeString("es-PE", {
     hour: "2-digit",
     minute: "2-digit",
-  });
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "";
-  return parseApiDate(iso).toLocaleDateString("es-PE", {
-    month: "short",
-    day: "2-digit",
   });
 }
 
@@ -295,8 +309,52 @@ export function ConversationsClient({
     setHasMore(initialConversations.length < initialStats.total);
   }, [initialConversations, initialStats]);
 
+  // Ids de mensajes ya contados en la lista: un reconnect o un evento repetido
+  // no debe inflar `message_count`.
+  const countedMsgIdsRef = useRef(new Set<number>());
+
+  // Trae la página 1 del tab actual y la fusiona con lo cargado: actualiza las
+  // que ya están y antepone las nuevas (una conversación nueva, o una antigua
+  // que no estaba cargada por la paginación y acaba de recibir un mensaje).
+  // No usamos router.refresh(): reinicia el tab activo y el scroll infinito.
+  const syncFirstPage = useCallback(async () => {
+    const res = await loadConversationsAction(
+      1,
+      PAGE_SIZE,
+      STATUS_FOR_FILTER[filter],
+    );
+    if (!res.ok) return;
+    const fresh = new Map(res.data.items.map((c) => [c.id, c]));
+    setConversations((prev) => {
+      const merged = prev.map((c) => fresh.get(c.id) ?? c);
+      const known = new Set(prev.map((c) => c.id));
+      const added = res.data.items.filter((c) => !known.has(c.id));
+      return [...added, ...merged];
+    });
+  }, [filter]);
+
+  // Cuántas veces el servidor nos saludó ("hello" llega en cada conexión WS).
+  const helloCountRef = useRef(0);
+
+  // El handler se recrea en cada render (el hook guarda siempre el último), así
+  // que `conversations`, `filter` y `active` están al día. Decidimos leyendo
+  // ese estado y no dentro de un updater de setState: React puede ejecutar los
+  // updaters diferidos, y antes eso hacía que una conversación nueva nunca
+  // disparara el refresh (el flag se leía antes de que el updater corriera).
   const { connected } = useConversationStream(requestWsTicket, (event) => {
-    if (event.type === "message.created") {
+    if (event.type === "hello") {
+      helloCountRef.current += 1;
+      // Re-conexión (caída de red, deploy de la API, laptop que despierta): los
+      // eventos perdidos no se reenvían, así que resincronizamos lista,
+      // contadores e hilo abierto. La primera conexión no lo necesita.
+      if (helloCountRef.current > 1) {
+        void syncFirstPage();
+        void refreshStats();
+        void loadMessagesAction(active.id).then((res) => {
+          if (res.ok) setMessages(res.data);
+        });
+      }
+    } else if (event.type === "message.created") {
       const msg = event.data as MessageRead;
       // Append to the open thread if it belongs to it.
       if (msg.conversation_id === active.id) {
@@ -304,28 +362,33 @@ export function ConversationsClient({
           prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
         );
       }
-      // Patch the sidebar preview + ordering.
-      let isUnknownConversation = false;
-      setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === msg.conversation_id);
-        if (idx === -1) {
-          // New conversation — refresh server data outside this setter to
-          // avoid triggering Router setState during render.
-          isUnknownConversation = true;
-          return prev;
-        }
-        const next = [...prev];
-        next[idx] = {
-          ...next[idx],
-          last_message_preview:
-            msg.content.slice(0, 80) + (msg.content.length > 80 ? "..." : ""),
-          message_count: next[idx].message_count + 1,
-        };
-        return next;
-      });
-      if (isUnknownConversation) {
-        router.refresh();
+      const known = conversations.some(
+        (c) => c.id === msg.conversation_id,
+      );
+      if (!known) {
+        // Conversación nueva o fuera de lo cargado: la pedimos al servidor (ya
+        // viene con preview y orden correctos) y actualizamos los contadores.
+        void syncFirstPage();
+        void refreshStats();
+        return;
       }
+      const firstTime = !countedMsgIdsRef.current.has(msg.id);
+      countedMsgIdsRef.current.add(msg.id);
+      // Preview + última actividad → el hilo sube al tope de la lista.
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === msg.conversation_id
+            ? {
+                ...c,
+                last_message_preview:
+                  msg.content.slice(0, 80) +
+                  (msg.content.length > 80 ? "..." : ""),
+                last_message_at: msg.created_at ?? new Date().toISOString(),
+                message_count: c.message_count + (firstTime ? 1 : 0),
+              }
+            : c,
+        ),
+      );
     } else if (event.type === "message.status_changed") {
       const data = event.data as {
         message_id: number;
@@ -346,11 +409,28 @@ export function ConversationsClient({
         conversation_id: number;
         status: ConversationStatus;
       };
+      // En un tab filtrado ("Activas"/"Escaladas"), la que cambia a otro estado
+      // sale de la lista; en "Todas" solo se actualiza el pill.
+      const tabStatus = STATUS_FOR_FILTER[filter];
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === data.conversation_id ? { ...c, status: data.status } : c,
-        ),
+        prev
+          .map((c) =>
+            c.id === data.conversation_id ? { ...c, status: data.status } : c,
+          )
+          .filter(
+            (c) =>
+              !tabStatus ||
+              c.id !== data.conversation_id ||
+              c.status === tabStatus,
+          ),
       );
+      // Si entra a este tab (p. ej. se escala estando en "Escaladas"), la traemos.
+      if (
+        tabStatus === data.status &&
+        !conversations.some((c) => c.id === data.conversation_id)
+      ) {
+        void syncFirstPage();
+      }
       void refreshStats();
       if (data.conversation_id === active.id) {
         setActive((prev) => ({ ...prev, status: data.status }));
@@ -376,12 +456,10 @@ export function ConversationsClient({
     }
   }, [messages]);
 
-  const sortedConversations = useMemo(() => {
-    return [...conversations].sort(
-      (a, b) =>
-        new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime(),
-    );
-  }, [conversations]);
+  const sortedConversations = useMemo(
+    () => [...conversations].sort(byActivityDesc),
+    [conversations],
+  );
 
   // Contadores reales por estado (vienen del backend, no de lo cargado).
   const counts = {
@@ -536,7 +614,7 @@ export function ConversationsClient({
                                 fill="currentColor"
                               />
                             )}
-                            {fmtDate(c.opened_at)}
+                            {fmtActivity(c.last_message_at ?? c.opened_at)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">

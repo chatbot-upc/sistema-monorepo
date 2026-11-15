@@ -64,33 +64,58 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def _redis_subscriber_loop() -> None:
-    """Background task: forward every Redis event into connected WS clients."""
-    settings = get_settings()
-    try:
-        from redis.asyncio import Redis
+_SUBSCRIBER_BACKOFF_S = (1, 2, 5, 10, 30)
 
-        client = Redis.from_url(settings.redis_url)
+
+async def _subscribe_once() -> None:
+    """Una sesión de suscripción: retorna/lanza cuando Redis corta la conexión."""
+    from redis.asyncio import Redis
+
+    settings = get_settings()
+    client = Redis.from_url(settings.redis_url)
+    try:
+        pubsub = client.pubsub()
+        await pubsub.subscribe(EVENTS_CHANNEL)
+        log.info("ws_subscriber_started", channel=EVENTS_CHANNEL)
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            data = message.get("data")
+            if isinstance(data, bytes):
+                data = data.decode("utf-8")
+            if not isinstance(data, str):
+                continue
+            await manager.broadcast(data)
+    finally:
+        await client.aclose()
+
+
+async def _redis_subscriber_loop() -> None:
+    """Background task: forward every Redis event into connected WS clients.
+
+    Se re-suscribe con backoff si Redis se cae o corta la conexión. Antes un
+    solo fallo mataba la tarea en silencio: los CRM seguían "conectados" (el
+    WS vive en este proceso) pero no volvían a recibir eventos hasta reiniciar
+    la API.
+    """
+    attempt = 0
+    loop = asyncio.get_running_loop()
+    while True:
+        started = loop.time()
         try:
-            pubsub = client.pubsub()
-            await pubsub.subscribe(EVENTS_CHANNEL)
-            log.info("ws_subscriber_started", channel=EVENTS_CHANNEL)
-            async for message in pubsub.listen():
-                if message.get("type") != "message":
-                    continue
-                data = message.get("data")
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
-                if not isinstance(data, str):
-                    continue
-                await manager.broadcast(data)
-        finally:
-            await client.aclose()
-    except asyncio.CancelledError:
-        log.info("ws_subscriber_cancelled")
-        raise
-    except Exception:
-        log.exception("ws_subscriber_failed")
+            await _subscribe_once()
+            log.warning("ws_subscriber_stream_ended")
+        except asyncio.CancelledError:
+            log.info("ws_subscriber_cancelled")
+            raise
+        except Exception:
+            log.exception("ws_subscriber_failed", attempt=attempt)
+        # Una sesión que duró un rato no cuenta como fallo consecutivo.
+        if loop.time() - started > 60:
+            attempt = 0
+        delay = _SUBSCRIBER_BACKOFF_S[min(attempt, len(_SUBSCRIBER_BACKOFF_S) - 1)]
+        attempt += 1
+        await asyncio.sleep(delay)
 
 
 @router.websocket("/api/v1/ws/conversations")

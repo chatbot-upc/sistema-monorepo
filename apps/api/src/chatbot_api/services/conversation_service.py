@@ -63,9 +63,10 @@ async def list_paginated(
             closed_at=conv.closed_at,
             message_count=msg_count,
             last_message_preview=preview,
+            last_message_at=last_message_at,
             starred=conv.starred,
         )
-        for conv, msg_count, preview, profile_name in rows
+        for conv, msg_count, preview, profile_name, last_message_at in rows
     ]
 
     return Page(

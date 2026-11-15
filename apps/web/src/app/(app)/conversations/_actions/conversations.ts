@@ -10,6 +10,7 @@ import {
   fetchConversations,
   fetchConversationStats,
   fetchHistory,
+  fetchMessages,
   fetchNotes,
   reopenConversation,
   releaseConversation,
@@ -25,6 +26,7 @@ import {
   type ConversationStats,
   type ConversationStatus,
   type InternalNote,
+  type MessageRead,
   type Page,
   type SendMessageResponse,
   type Tag,
@@ -157,6 +159,21 @@ export async function loadConversationsAction(
     return { ok: true, data };
   } catch (err) {
     return toError(err, "No se pudieron cargar más conversaciones.");
+  }
+}
+
+// Resync del hilo abierto tras una reconexión del WebSocket: los eventos que
+// llegaron mientras estaba caído no se reenvían, así que pedimos el hilo entero.
+export async function loadMessagesAction(
+  id: number,
+): Promise<ActionResult<MessageRead[]>> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    const data = await fetchMessages(id);
+    return { ok: true, data: data.items };
+  } catch (err) {
+    return toError(err, "No se pudieron cargar los mensajes.");
   }
 }
 
