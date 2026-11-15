@@ -5,6 +5,7 @@ from math import ceil
 
 import structlog
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chatbot_api.core.events import message_to_event_payload, publish_event
@@ -64,9 +65,10 @@ async def list_paginated(
             message_count=msg_count,
             last_message_preview=preview,
             last_message_at=last_message_at,
+            unread_count=unread,
             starred=conv.starred,
         )
-        for conv, msg_count, preview, profile_name, last_message_at in rows
+        for conv, msg_count, preview, profile_name, last_message_at, unread in rows
     ]
 
     return Page(
@@ -115,6 +117,16 @@ async def set_starred(
     conv.starred = starred
     await db.commit()
     return await get_detail(db, conversation_id)
+
+
+async def mark_seen(db: AsyncSession, *, conversation_id: int) -> None:
+    """Un admin abrió el hilo: lo entrante hasta ahora deja de contar como no
+    leído. Se avisa por WS para que el badge se limpie en las demás pestañas."""
+    conv = await _get_or_404(db, conversation_id)
+    # Reloj de la DB, el mismo que pone `messages.created_at`.
+    conv.agent_last_seen_at = func.now()
+    await db.commit()
+    await publish_event("conversation.seen", {"conversation_id": conversation_id})
 
 
 async def update_contact(

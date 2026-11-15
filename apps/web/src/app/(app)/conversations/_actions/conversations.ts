@@ -12,6 +12,7 @@ import {
   fetchHistory,
   fetchMessages,
   fetchNotes,
+  markSeen,
   reopenConversation,
   releaseConversation,
   sendConversationMessage,
@@ -174,6 +175,17 @@ export async function loadMessagesAction(
     return { ok: true, data: data.items };
   } catch (err) {
     return toError(err, "No se pudieron cargar los mensajes.");
+  }
+}
+
+export async function markSeenAction(id: number): Promise<ActionResult> {
+  const idErr = validateId(id);
+  if (idErr) return idErr;
+  try {
+    await markSeen(id);
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return toError(err, "No se pudo marcar como leída.");
   }
 }
 

@@ -41,6 +41,10 @@ class Conversation(IdPk, Timestamped, Base):
     )
     meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     starred: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Última vez que un admin abrió el hilo en el CRM (compartido entre admins,
+    # como Chatwoot). Los mensajes del estudiante posteriores cuentan como no
+    # leídos. NULL = nunca abierto → todo lo entrante está sin leer.
+    agent_last_seen_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     student: Mapped["Student"] = relationship(lazy="selectin")
     messages: Mapped[list["Message"]] = relationship(

@@ -46,6 +46,7 @@ import {
   deleteAction,
   loadConversationsAction,
   loadMessagesAction,
+  markSeenAction,
 } from "../_actions/conversations";
 import { MessageComposer } from "./MessageComposer";
 import { ConversationActions } from "./ConversationActions";
@@ -341,6 +342,26 @@ export function ConversationsClient({
   // ese estado y no dentro de un updater de setState: React puede ejecutar los
   // updaters diferidos, y antes eso hacía que una conversación nueva nunca
   // disparara el refresh (el flag se leía antes de que el updater corriera).
+  // ── No leídos ─────────────────────────────────────────────────────────
+  // El hilo abierto cuenta como leído solo si la pestaña está a la vista: con
+  // el CRM en segundo plano, lo entrante debe seguir marcado.
+  const activeId = active.id;
+  const markActiveSeen = useCallback(() => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === activeId ? { ...c, unread_count: 0 } : c)),
+    );
+    void markSeenAction(activeId);
+  }, [activeId]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") markActiveSeen();
+    };
+    onVisible();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [markActiveSeen]);
+
   const { connected } = useConversationStream(requestWsTicket, (event) => {
     if (event.type === "hello") {
       helloCountRef.current += 1;
@@ -374,6 +395,15 @@ export function ConversationsClient({
       }
       const firstTime = !countedMsgIdsRef.current.has(msg.id);
       countedMsgIdsRef.current.add(msg.id);
+      // Entrante del estudiante: suma a no leídos, salvo que el admin lo esté
+      // viendo ahora mismo (hilo abierto + pestaña visible) → se marca leído.
+      const isIncoming = msg.role === "student";
+      const seenNow =
+        isIncoming &&
+        msg.conversation_id === active.id &&
+        document.visibilityState === "visible";
+      if (seenNow) void markSeenAction(active.id);
+      const unreadDelta = isIncoming && !seenNow && firstTime ? 1 : 0;
       // Preview + última actividad → el hilo sube al tope de la lista.
       setConversations((prev) =>
         prev.map((c) =>
@@ -385,6 +415,7 @@ export function ConversationsClient({
                   (msg.content.length > 80 ? "..." : ""),
                 last_message_at: msg.created_at ?? new Date().toISOString(),
                 message_count: c.message_count + (firstTime ? 1 : 0),
+                unread_count: c.unread_count + unreadDelta,
               }
             : c,
         ),
@@ -435,6 +466,14 @@ export function ConversationsClient({
       if (data.conversation_id === active.id) {
         setActive((prev) => ({ ...prev, status: data.status }));
       }
+    } else if (event.type === "conversation.seen") {
+      // Otro admin (u otra pestaña) abrió el hilo: el badge se limpia aquí también.
+      const data = event.data as { conversation_id: number };
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === data.conversation_id ? { ...c, unread_count: 0 } : c,
+        ),
+      );
     } else if (event.type === "conversation.deleted") {
       const data = event.data as { conversation_id: number };
       setConversations((prev) =>
@@ -583,6 +622,7 @@ export function ConversationsClient({
               visibleConversations.map((c) => {
                 const isActive = c.id === active.id;
                 const isEscalated = c.status === "takeover";
+                const unread = isActive ? 0 : c.unread_count;
                 return (
                   <li key={c.id} className="group relative">
                     <Link
@@ -605,7 +645,12 @@ export function ConversationsClient({
                           >
                             {contactDisplayName(c)}
                           </span>
-                          <span className="shrink-0 flex items-center gap-1 text-[11px] text-muted font-mono">
+                          <span
+                            className={cn(
+                              "shrink-0 flex items-center gap-1 text-[11px] font-mono",
+                              unread > 0 ? "text-primary font-semibold" : "text-muted",
+                            )}
+                          >
                             {c.starred && (
                               <Star
                                 size={11}
@@ -618,12 +663,31 @@ export function ConversationsClient({
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <span className="truncate text-[12px] text-muted">
+                          <span
+                            className={cn(
+                              "truncate text-[12px]",
+                              unread > 0 ? "text-fg font-medium" : "text-muted",
+                            )}
+                          >
                             {c.last_message_preview ?? "(sin mensajes)"}
                           </span>
-                          {isEscalated && (
-                            <span className="shrink-0 w-2 h-2 rounded-full bg-primary group-hover:opacity-0 transition-opacity" />
-                          )}
+                          {/* Se ocultan en hover: ahí aparece el botón de borrar. */}
+                          <span className="shrink-0 flex items-center gap-1.5 group-hover:opacity-0 transition-opacity">
+                            {isEscalated && (
+                              <span
+                                className="w-2 h-2 rounded-full bg-primary"
+                                title="Escalada"
+                              />
+                            )}
+                            {unread > 0 && (
+                              <span
+                                className="min-w-[18px] h-[18px] px-1 bg-primary text-white rounded-full font-mono text-[10px] font-semibold flex items-center justify-center"
+                                aria-label={`${unread} sin leer`}
+                              >
+                                {unread > 99 ? "99+" : unread}
+                              </span>
+                            )}
+                          </span>
                         </div>
                       </div>
                     </Link>

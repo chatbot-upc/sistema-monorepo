@@ -188,6 +188,15 @@ async def set_star(
     )
 
 
+@router.post("/{conversation_id}/seen", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_seen(
+    conversation_id: int,
+    _: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    await conversation_service.mark_seen(db, conversation_id=conversation_id)
+
+
 # ── Etiquetas de la conversación ──────────────────────────────────────
 
 
